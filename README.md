@@ -48,6 +48,8 @@ Arguments are passed directly to the executable. Shell substitutions and shell s
 
 Stop managed servers before exiting void.dash. Closing the application does not deliberately stop a world; the process is detached on application exit, and console pipes cannot be reattached after a dashboard restart. For unattended operation, run the agent under your operating system's service manager and keep its process alive. A process started elsewhere can use RCON, but must be stopped before void.dash can launch it as a managed process.
 
+**Already started Minecraft with a `.bat` file?** The dashboard can display its status, but Restart and live console logs require a process started by the current void.dash session. Type `stop` in the existing Minecraft console, wait for saving/shutdown, then use **Start** in void.dash. Choose **Local process**, use `127.0.0.1` for the hostname when both applications run on the same machine, and set the server directory to the folder containing the jar and `server.properties` (for example, `C:\Minecraft\Survival`). Copy the Java executable and arguments from your working batch file. RCON is not required for this workflow. The dashboard labels externally started servers and disables Restart rather than silently attempting RCON.
+
 **Network RCON:** Enable RCON in `server.properties`, restart the Minecraft server, then enter its host, RCON port, and password in the dashboard:
 
 ```properties

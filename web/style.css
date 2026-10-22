@@ -472,6 +472,15 @@ h1 span {
   color: var(--green);
   stroke-width: 3;
 }
+.management-notice {
+  border: 1px solid var(--line-bright);
+  background: #f5b42706;
+  color: #c8af7d;
+  padding: 12px 15px;
+  margin-bottom: 20px;
+  font-size: 10px;
+  line-height: 1.8;
+}
 .overview-toolbar {
   display: flex;
   justify-content: space-between;

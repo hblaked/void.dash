@@ -201,18 +201,7 @@ async fn action(
     match action.as_str() {
         "start" => app.start(&server).await?,
         "stop" => app.stop(&server).await?,
-        "restart" => {
-            if server.mode == "rcon" {
-                return Err(ApiError("Restarting remote servers requires an agent; RCON cannot start a stopped process.".into()));
-            }
-            if server.mode == "agent" {
-                app.proxy(&server, reqwest::Method::POST, "action/restart", None)
-                    .await?;
-            } else {
-                app.stop(&server).await?;
-                app.start(&server).await?;
-            }
-        }
+        "restart" => app.restart(&server).await?,
         _ => return Err(ApiError("Unknown action".into())),
     }
     Ok(Json(json!({"ok":true})))

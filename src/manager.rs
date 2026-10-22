@@ -316,24 +316,7 @@ impl Manager {
         }
         let process = self.processes.lock().await.get(&server.id).cloned();
         if let Some(handle) = process {
-            let mut process = handle.lock().await;
-            process
-                .stdin
-                .write_all(b"stop\n")
-                .await
-                .map_err(|e| e.to_string())?;
-            self.log(
-                &server.id,
-                "[void.dash] Sent stop. Waiting for the world to save…".into(),
-            )
-            .await;
-            match tokio::time::timeout(std::time::Duration::from_secs(30), process.child.wait()).await {
-                Ok(Ok(_)) => (),
-                Ok(Err(e)) => return Err(e.to_string()),
-                Err(_) => return Err("Server is still saving after 30 seconds. It has not been force-killed; inspect the console.".into()),
-            }
-            self.remove_process(&server.id, &handle).await;
-            Ok(())
+            self.stop_managed(server, &handle).await
         } else if !server.rcon_password.is_empty() {
             protocol::rcon(
                 &server.host,
@@ -346,6 +329,47 @@ impl Manager {
         } else {
             Err("No process is managed by this dashboard. Configure RCON to stop an externally started server.".into())
         }
+    }
+    pub async fn restart(self: &App, server: &Server) -> Result<()> {
+        if server.mode == "rcon" {
+            return Err(
+                "Restarting remote servers requires an agent; RCON cannot start a stopped process."
+                    .into(),
+            );
+        }
+        if server.mode == "agent" {
+            self.proxy(server, reqwest::Method::POST, "action/restart", None)
+                .await?;
+            return Ok(());
+        }
+        let handle = self.processes.lock().await.get(&server.id).cloned().ok_or(
+            "This server was not started by this void.dash session. Stop it in its current Minecraft console, then use Start here before using Restart. Local process control does not require RCON."
+        )?;
+        // Restart must operate on the process we own, never silently fall back to RCON.
+        self.stop_managed(server, &handle).await?;
+        self.start(server).await
+    }
+    async fn stop_managed(
+        &self,
+        server: &Server,
+        handle: &Arc<Mutex<ManagedProcess>>,
+    ) -> Result<()> {
+        let mut process = handle.lock().await;
+        process.stdin.write_all(b"stop\n").await.map_err(|e| {
+            format!("Cannot send stop to the managed server process: {e}. It may have exited; inspect the console and use Start to launch it again.")
+        })?;
+        self.log(
+            &server.id,
+            "[void.dash] Sent stop. Waiting for the world to save…".into(),
+        )
+        .await;
+        match tokio::time::timeout(std::time::Duration::from_secs(30), process.child.wait()).await {
+            Ok(Ok(_)) => (),
+            Ok(Err(e)) => return Err(e.to_string()),
+            Err(_) => return Err("Server is still saving after 30 seconds. It has not been force-killed; inspect the console.".into()),
+        }
+        self.remove_process(&server.id, handle).await;
+        Ok(())
     }
     async fn remove_process(&self, id: &str, handle: &Arc<Mutex<ManagedProcess>>) {
         let mut processes = self.processes.lock().await;
@@ -626,6 +650,35 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn restart_of_external_local_server_never_connects_to_rcon() {
+        let app = Manager::new(
+            std::env::temp_dir().join(format!("void-unowned-{}.json", uuid::Uuid::new_v4())),
+            "test".into(),
+            false,
+        )
+        .await
+        .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let server: Server = serde_json::from_value(serde_json::json!({
+            "name":"External local server", "host":"127.0.0.1", "mode":"local",
+            "directory":"C:\\Minecraft\\Survival", "rcon_password":"unused-password",
+            "rcon_port":listener.local_addr().unwrap().port()
+        }))
+        .unwrap();
+        let error =
+            tokio::time::timeout(std::time::Duration::from_millis(500), app.restart(&server))
+                .await
+                .unwrap()
+                .unwrap_err();
+        assert!(error.contains("not started by this void.dash session"));
+        assert!(error.contains("Local process control does not require RCON"));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), listener.accept())
+                .await
+                .is_err()
+        );
+    }
     #[cfg(unix)]
     #[tokio::test]
     async fn manages_real_process_logs_commands_viewers_and_graceful_stop() {
@@ -664,6 +717,18 @@ mod tests {
         .unwrap();
         assert_eq!(app.server(&server.id).await.unwrap().viewers.len(), 1);
         assert!(app.remove(&server.id).await.is_err());
+        // A stale optional RCON password must not affect restart of our own process.
+        let mut with_stale_rcon = server.clone();
+        with_stale_rcon.rcon_password = "unused-password".into();
+        with_stale_rcon.rcon_port = 9;
+        app.restart(&with_stale_rcon).await.unwrap();
+        app.command(&server, "say restarted without RCON")
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(app.logs.read().await[&server.id]
+            .iter()
+            .any(|l| l.text == "Executed: say restarted without RCON"));
         app.stop(&server).await.unwrap();
         assert!(!app.processes.lock().await.contains_key(&server.id));
         app.remove(&server.id).await.unwrap();

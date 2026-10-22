@@ -52,6 +52,7 @@ async function freePort() {
     viewport: { width: 1440, height: 1080 },
   });
   const errors = [];
+  let externalServer;
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());
@@ -117,6 +118,20 @@ async function freePort() {
     });
     checks.push("390px layout has no horizontal overflow");
     await page.setViewportSize({ width: 1440, height: 1080 });
+    // Reproduce an already-running server started in a separate .bat/terminal.
+    externalServer = spawn(process.env.PYTHON || "python3", [
+      "-u",
+      resolve("tests/fixture_server.py"),
+      "--port",
+      String(gamePort),
+    ]);
+    let externalOutput = "";
+    externalServer.stdout.on("data", (chunk) => (externalOutput += chunk));
+    externalServer.stderr.on("data", (chunk) => (externalOutput += chunk));
+    for (let i = 0; i < 100 && !externalOutput.includes("Fixture ready"); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(externalOutput.includes("Fixture ready"), externalOutput);
     await page.locator("#add-server").click();
     await page.locator("[name=name]").fill("Browser test world");
     await page.locator("[name=port]").fill(String(gamePort));
@@ -140,6 +155,46 @@ async function freePort() {
     assert.equal(
       await page.locator("#server-name").textContent(),
       "Browser test world",
+    );
+    await page
+      .locator("#management-notice")
+      .waitFor({ state: "visible", timeout: 15000 });
+    assert.equal(await page.locator("#restart-button").isDisabled(), true);
+    assert.equal(await page.locator("#stop-button").isDisabled(), true);
+    const inventory = await (
+      await page.request.get(`http://127.0.0.1:${appPort}/api/servers`)
+    ).json();
+    const response = await page.request.post(
+      `http://127.0.0.1:${appPort}/api/servers/${inventory.servers[0].id}/action/restart`,
+    );
+    const refusedRestart = {
+      status: response.status(),
+      body: await response.json(),
+    };
+    assert.equal(refusedRestart.status, 400);
+    assert.ok(
+      refusedRestart.body.error.includes(
+        "not started by this void.dash session",
+      ),
+    );
+    assert.ok(
+      refusedRestart.body.error.includes(
+        "Local process control does not require RCON",
+      ),
+    );
+    const externalExit = new Promise((resolve) =>
+      externalServer.once("exit", resolve),
+    );
+    externalServer.stdin.write("stop\n");
+    await externalExit;
+    await page.waitForFunction(
+      () => !document.querySelector("#start-button").disabled,
+      {},
+      { timeout: 15000 },
+    );
+    assert.equal(await page.locator("#management-notice").isVisible(), false);
+    checks.push(
+      "External local server has clear ownership notice, disabled Restart, and an actionable API error; taking control needs no RCON",
     );
     await page.locator("#start-button").click();
     await page
@@ -200,6 +255,8 @@ async function freePort() {
       JSON.stringify({ passed: checks, browserErrors: errors }, null, 2),
     );
   } finally {
+    if (externalServer && externalServer.exitCode === null)
+      externalServer.stdin.end("stop\n");
     // Ensure a failed test does not leave a fixture process behind.
     try {
       const root = await fetch(`http://127.0.0.1:${appPort}`);

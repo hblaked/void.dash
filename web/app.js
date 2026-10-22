@@ -387,16 +387,18 @@ function render() {
           ? "PROCESS MANAGED"
           : server.mode === "rcon"
             ? "RCON CONNECTION"
-            : "SERVER CONTROLS",
+            : state.online
+              ? "EXTERNAL PROCESS"
+              : "SERVER CONTROLS",
   );
   $("#start-button").disabled =
     ui.pendingAction || server.mode === "rcon" || state.online || state.managed;
   $("#restart-button").disabled =
-    ui.pendingAction ||
-    server.mode === "rcon" ||
-    !(state.online || state.managed);
+    ui.pendingAction || server.mode === "rcon" || !state.managed;
   $("#stop-button").disabled =
-    ui.pendingAction || !(state.online || state.managed);
+    ui.pendingAction ||
+    !(state.online || state.managed) ||
+    (server.mode === "local" && !state.managed && !server.has_rcon_password);
   $("#start-button").title =
     server.mode === "rcon"
       ? "An agent is required to start remote servers."
@@ -404,7 +406,21 @@ function render() {
   $("#restart-button").title =
     server.mode === "rcon"
       ? "An agent is required to restart remote servers."
-      : "Save, stop, then start the server";
+      : !state.managed
+        ? "Start this server through void.dash first. A process started in another console cannot be restarted here."
+        : "Save, stop, then start the server";
+  $("#stop-button").title =
+    server.mode === "local" && !state.managed && !server.has_rcon_password
+      ? "Stop this externally started server in its Minecraft console, or configure RCON."
+      : "Save and stop the server";
+  const externalLocalProcess =
+    !ui.demo && server.mode === "local" && state.online && !state.managed;
+  $("#management-notice").hidden = !externalLocalProcess;
+  if (externalLocalProcess)
+    text(
+      "#management-notice",
+      "This server is running outside this void.dash session. For Restart and live logs, type stop in its current Minecraft console, wait for it to save, then use Start here. Local process control does not require RCON.",
+    );
   text(
     "#console-host",
     `${server.host}:${server.port} / ${server.mode === "rcon" ? "RCON responses" : "stdout + stderr"}`,

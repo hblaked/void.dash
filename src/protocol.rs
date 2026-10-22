@@ -186,7 +186,7 @@ pub async fn rcon(host: &str, port: u16, password: &str, command: &str) -> Resul
     timeout(Duration::from_secs(5), async {
         let mut s = TcpStream::connect((host, port))
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("RCON connection to {host}:{port} failed: {e}. Check enable-rcon, rcon.port, and the server firewall. Local servers started with void.dash do not require RCON."))?;
         rcon_write(&mut s, 1, 3, password).await?;
         loop {
             let (id, kind, _) = rcon_read(&mut s).await?;
@@ -217,7 +217,7 @@ pub async fn rcon(host: &str, port: u16, password: &str, command: &str) -> Resul
         Ok(strip_format(&output))
     })
     .await
-    .map_err(|_| "RCON timed out".to_string())?
+    .map_err(|_| format!("RCON at {host}:{port} timed out. Check the server's RCON settings and network access."))?
 }
 
 pub fn parse_commands(help: &str) -> Vec<String> {
@@ -287,6 +287,18 @@ mod tests {
             "There are 1 of 20 players online: Alex"
         );
         server.await.unwrap();
+    }
+    #[tokio::test]
+    async fn refused_rcon_connection_identifies_the_service_and_port() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let error = rcon("127.0.0.1", port, "not-logged", "stop")
+            .await
+            .unwrap_err();
+        assert!(error.contains(&format!("RCON connection to 127.0.0.1:{port} failed")));
+        assert!(error.contains("enable-rcon"));
+        assert!(!error.contains("not-logged"));
     }
     #[tokio::test]
     async fn status_reads_motd_icon_and_players() {
