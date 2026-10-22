@@ -6,6 +6,10 @@ A quiet control room for your Minecraft worlds.
 
 ## Run
 
+**Windows download:** Get the [Windows ZIP from GitHub Releases](https://github.com/hblaked/void.dash/releases/latest), extract it, and double-click **void-dash.exe**. The executable is also available as a separate release asset. This Windows x64 build was cross-compiled and has not yet been run on Windows.
+
+To build from source:
+
 Install a current stable [Rust toolchain](https://rustup.rs/) and your platform's C/C++ linker. Then:
 
 ```sh

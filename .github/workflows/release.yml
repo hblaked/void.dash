@@ -1,0 +1,60 @@
+name: Publish release downloads
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the tagged release
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify release version and packaged executable
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, tomllib, zipfile
+          version = tomllib.loads(pathlib.Path('Cargo.toml').read_text())['package']['version']
+          assert os.environ['RELEASE_TAG'] == 'v' + version, 'Tag must match Cargo.toml version'
+          directory = pathlib.Path('release-assets')
+          executable = (directory / 'void-dash.exe').read_bytes()
+          assert executable[:2] == b'MZ', 'Expected a Windows executable'
+          with zipfile.ZipFile(directory / f'void-dash-{version}-windows-x86_64.zip') as archive:
+              assert archive.testzip() is None, 'Corrupt ZIP'
+              assert archive.read('void-dash/void-dash.exe') == executable
+          print(f'Windows release {version}: executable and ZIP verified')
+          PY
+          cd release-assets
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Publish executable and ZIP on GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "void.dash $RELEASE_TAG" \
+              --notes-file release-assets/RELEASE-NOTES.md
+          fi
+          gh release upload "$RELEASE_TAG" \
+            release-assets/void-dash.exe \
+            release-assets/*-windows-x86_64.zip \
+            release-assets/SHA256SUMS.txt --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest
