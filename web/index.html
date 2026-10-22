@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#100f0b" />
+    <title>void.dash — a home for your worlds</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23100f0b'/%3E%3Cpath d='M7 8h5l4 13 4-13h5l-7 18h-4z' fill='%23F5B427'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="void.dash home"
+          ><span class="brand-mark">v<span>_</span></span
+          ><span>void<span class="brand-dot">.</span>dash</span></a
+        >
+        <div class="top-divider"></div>
+        <nav id="server-tabs" aria-label="Minecraft servers"></nav>
+        <button
+          class="add-server icon-button"
+          id="add-server"
+          title="Add server"
+          aria-label="Add server"
+        >
+          +
+        </button>
+        <span class="workspace"
+          ><span class="tiny-square"></span> LOCAL WORKSPACE</span
+        >
+        <button
+          class="avatar"
+          id="help-button"
+          aria-label="Open connection guide"
+          title="Connection guide"
+        >
+          ?
+        </button>
+      </header>
+
+      <aside class="rail" aria-label="Application navigation">
+        <button
+          class="rail-button active"
+          id="overview-button"
+          aria-label="Server overview"
+          title="Server overview"
+        >
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+          </svg>
+        </button>
+        <button
+          class="rail-button"
+          id="focus-console"
+          aria-label="Focus console"
+          title="Focus console"
+        >
+          <svg viewBox="0 0 24 24"><path d="m5 6 6 6-6 6m9 0h5" /></svg>
+        </button>
+        <button
+          class="rail-button"
+          id="focus-viewers"
+          aria-label="Plugin viewers"
+          title="Plugin viewers"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zm6-3v15m6-12v15" />
+          </svg>
+        </button>
+        <div class="rail-bottom">
+          <button
+            class="rail-button"
+            id="settings-button"
+            aria-label="Edit selected server"
+            title="Server settings"
+          >
+            <svg viewBox="0 0 24 24">
+              <path
+                d="m10 3-1 3-3 1-2 3 2 2-1 3 2 3h3l2 3 3-1 1-3 3-1 1-3-2-2V8l-3-2-2-3z"
+              />
+              <circle cx="12" cy="12" r="3" />
+            </svg></button
+          ><span class="rail-version">v0.1</span>
+        </div>
+      </aside>
+
+      <main>
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">
+              <span class="accent">WORKSPACE</span><span>/</span> SERVER
+              OVERVIEW
+            </div>
+            <h1>Your world. <span>Under control.</span></h1>
+            <p>A little less administration. A little more Minecraft.</p>
+          </div>
+          <div class="heading-right">
+            <span id="clock">--:--:--</span
+            ><span id="connection-status"
+              ><i class="status-dot"></i> CONNECTING</span
+            >
+          </div>
+        </div>
+
+        <div id="demo-banner" class="demo-banner" hidden>
+          <span
+            ><span class="preview-tag">PREVIEW</span> A look around your next
+            control room. These are sample servers.</span
+          ><button id="connect-first">
+            Connect your server <span>↗</span>
+          </button>
+        </div>
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
+
+        <section class="server-identity" aria-label="Minecraft server identity">
+          <div id="server-icon" class="server-icon"></div>
+          <div class="identity-copy">
+            <div class="identity-title">
+              <h2 id="server-name">No server selected</h2>
+              <span id="server-edition" class="tag">JAVA EDITION</span>
+            </div>
+            <div id="server-motd" class="motd">
+              Connect a server to see its message of the day.
+            </div>
+          </div>
+          <div class="identity-status">
+            <span class="online-badge" id="online-badge"><i></i> CHECKING</span
+            ><span id="game-version">—</span><span id="identity-players"></span>
+          </div>
+          <div class="identity-signal" aria-label="Server latency">
+            <svg viewBox="0 0 25 22">
+              <path d="M2 20v-3m5 3v-6m5 6V10m5 10V6m5 14V2" /></svg
+            ><span id="latency">—</span>
+          </div>
+        </section>
+
+        <div class="overview-toolbar">
+          <div class="section-tabs">
+            <button class="section-tab selected" id="overview-tab">
+              <span>◈</span> Overview</button
+            ><button class="section-tab" id="configure-tab">
+              <span>⚙</span> Configuration
+            </button>
+          </div>
+          <div class="server-actions">
+            <span id="process-state" class="process-state">SERVER CONTROLS</span
+            ><button class="button start-button" id="start-button">
+              <span>▷</span> Start</button
+            ><button class="button" id="restart-button">
+              <span>↻</span> Restart</button
+            ><button class="button stop-button" id="stop-button">
+              <span>□</span> Stop
+            </button>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <section
+            class="panel console-panel"
+            id="console-panel"
+            aria-labelledby="console-title"
+          >
+            <div class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">01</span>
+                <h3 id="console-title">Live console</h3>
+                <span class="live-indicator"><i></i> LIVE</span>
+              </div>
+              <div class="panel-tools">
+                <button
+                  id="pause-logs"
+                  class="tool-button"
+                  title="Pause log updates"
+                  aria-label="Pause log updates"
+                >
+                  Ⅱ</button
+                ><button
+                  id="export-logs"
+                  class="tool-button"
+                  title="Download logs"
+                  aria-label="Download logs"
+                >
+                  <svg viewBox="0 0 20 20">
+                    <path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4" />
+                  </svg></button
+                ><button
+                  id="clear-logs"
+                  class="tool-button"
+                  title="Clear visible logs"
+                  aria-label="Clear visible logs"
+                >
+                  <svg viewBox="0 0 20 20">
+                    <path d="M4 5h12M8 2h4M6 5l1 12h6l1-12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="console-filter">
+              <svg viewBox="0 0 18 18">
+                <circle cx="7" cy="7" r="4" />
+                <path d="m10 10 5 5" /></svg
+              ><input
+                id="log-filter"
+                placeholder="Filter output…"
+                aria-label="Filter console output"
+              /><span id="line-count">0 lines</span
+              ><span class="console-host" id="console-host"
+                >server / latest.log</span
+              >
+            </div>
+            <div
+              class="console-output"
+              id="console-output"
+              role="log"
+              aria-label="Server console output"
+              tabindex="0"
+            ></div>
+            <div class="console-input-wrap">
+              <div
+                id="autocomplete"
+                class="autocomplete"
+                role="listbox"
+                aria-label="Available server commands"
+                hidden
+              ></div>
+              <form id="command-form" autocomplete="off">
+                <label for="command-input" class="command-prompt">/&gt;</label
+                ><input
+                  id="command-input"
+                  placeholder="Type a command…"
+                  spellcheck="false"
+                  aria-label="Server command"
+                  aria-autocomplete="list"
+                  aria-controls="autocomplete"
+                /><kbd class="input-tab">tab ↹</kbd
+                ><button
+                  type="submit"
+                  class="send-command"
+                  aria-label="Run command"
+                  title="Run command"
+                >
+                  ↵
+                </button>
+              </form>
+            </div>
+            <div class="console-footer">
+              <span
+                ><kbd>TAB</kbd> autocomplete
+                <span class="footer-divider">/</span>
+                <kbd>↑ ↓</kbd> history</span
+              ><button
+                id="refresh-commands"
+                title="Discover commands from the server's help output"
+              >
+                ↻ <span id="command-source">Discover commands</span></button
+              ><span class="console-connection"
+                ><i class="status-dot"></i
+                ><span id="console-connection">Not connected</span></span
+              >
+            </div>
+          </section>
+
+          <section
+            class="panel resources-panel"
+            aria-labelledby="resources-title"
+          >
+            <div class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">02</span>
+                <h3 id="resources-title">System resources</h3>
+              </div>
+              <span class="micro-label">HOST HEALTH</span>
+            </div>
+            <div class="resource-body">
+              <div class="memory-heading">
+                <span id="memory-label" class="micro-label">SERVER MEMORY</span
+                ><span class="resource-period">LAST 60 S</span>
+              </div>
+              <div class="memory-value">
+                <strong id="memory-used">—</strong
+                ><span id="memory-total">/ — GB</span
+                ><span id="memory-percent" class="percent-tag">—</span>
+              </div>
+              <div class="chart-wrap">
+                <div class="chart-grid">
+                  <span>100%</span><span>50%</span><span>0%</span>
+                </div>
+                <svg
+                  id="memory-chart"
+                  viewBox="0 0 360 100"
+                  preserveAspectRatio="none"
+                  aria-label="Memory usage over time"
+                >
+                  <defs>
+                    <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop
+                        offset="0%"
+                        stop-color="#F5B427"
+                        stop-opacity="0.22"
+                      />
+                      <stop
+                        offset="100%"
+                        stop-color="#F5B427"
+                        stop-opacity="0.01"
+                      />
+                    </linearGradient>
+                  </defs>
+                  <path id="chart-area" fill="url(#chart-fill)" />
+                  <path
+                    id="chart-line"
+                    fill="none"
+                    stroke="#F5B427"
+                    stroke-width="1.6"
+                    vector-effect="non-scaling-stroke"
+                  />
+                </svg>
+              </div>
+              <div class="chart-time"><span>60s ago</span><span>now</span></div>
+              <div class="resource-row">
+                <div><span class="resource-symbol">▥</span> CPU usage</div>
+                <div>
+                  <strong id="cpu-value">—</strong
+                  ><span id="cpu-cores">— cores</span>
+                </div>
+              </div>
+              <div class="meter"><i id="cpu-meter"></i></div>
+              <div class="resource-row">
+                <div><span class="resource-symbol">▣</span> Host memory</div>
+                <div><strong id="host-memory">—</strong></div>
+              </div>
+              <div class="meter"><i id="host-memory-meter"></i></div>
+              <div class="resource-bottom">
+                <div>
+                  <span class="micro-label">DISK AVAILABLE</span
+                  ><strong id="disk-free">—</strong>
+                </div>
+                <div>
+                  <span class="micro-label">PROCESS UPTIME</span
+                  ><strong id="uptime">—</strong>
+                </div>
+              </div>
+              <p id="resource-note" class="resource-note">
+                Waiting for host telemetry.
+              </p>
+            </div>
+          </section>
+
+          <section class="panel players-panel" aria-labelledby="players-title">
+            <div class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">03</span>
+                <h3 id="players-title">The people make the world.</h3>
+              </div>
+              <span class="tag player-count" id="player-count"
+                >0 PLAYERS ONLINE</span
+              >
+            </div>
+            <div class="players-list" id="players-list"></div>
+            <div class="players-footer">
+              <span
+                ><i class="status-dot"></i
+                ><span id="players-caption"
+                  >A quiet moment in the world.</span
+                ></span
+              ><span id="players-slots">— available slots</span>
+            </div>
+          </section>
+
+          <section
+            class="panel viewers-panel"
+            id="viewers-panel"
+            aria-labelledby="viewers-title"
+          >
+            <div class="panel-heading">
+              <div class="panel-title">
+                <span class="panel-number">04</span>
+                <h3 id="viewers-title">A window into your world</h3>
+              </div>
+              <button id="add-viewer" class="text-button">+ Add viewer</button>
+            </div>
+            <div id="viewer-list" class="viewer-list"></div>
+            <div class="viewers-footer">
+              <span>MAPS, METRICS & THE THINGS YOU BUILD.</span><span>↗</span>
+            </div>
+          </section>
+        </div>
+        <footer class="page-footer">
+          <span
+            ><span class="footer-logo">v_</span> Built for the worlds worth
+            keeping.</span
+          ><span
+            ><span class="accent">RUST POWERED</span
+            ><span class="footer-divider">/</span> void.dash
+            <span class="muted">0.1.0</span></span
+          >
+        </footer>
+      </main>
+    </div>
+
+    <dialog id="server-dialog" class="modal">
+      <form id="server-form">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow accent">MAKE YOURSELF AT HOME</span>
+            <h2 id="server-dialog-title">Connect a server</h2>
+          </div>
+          <button type="button" class="close-modal" aria-label="Close">
+            ×
+          </button>
+        </div>
+        <p class="modal-description">
+          Your worlds, your hardware. Choose how void.dash connects.
+        </p>
+        <div class="form-grid">
+          <label
+            >Server name<input
+              name="name"
+              placeholder="e.g. The Overworld"
+              required
+              maxlength="80" /></label
+          ><label
+            >Management<select name="mode" id="server-mode">
+              <option value="local">Local process · this computer</option>
+              <option value="rcon">RCON · network server</option>
+              <option value="agent">void.dash agent · remote host</option>
+            </select></label
+          ><label
+            >Game hostname<input
+              name="host"
+              placeholder="127.0.0.1"
+              value="127.0.0.1"
+              required /></label
+          ><label
+            >Game port<input
+              name="port"
+              type="number"
+              value="25565"
+              min="1"
+              max="65535"
+              required
+          /></label>
+          <div class="form-section local-field">
+            <span class="micro-label">PROCESS SETTINGS</span>
+            <p>
+              Use an existing server directory. Install Java and your server
+              jar, and accept Minecraft’s EULA yourself before starting.
+            </p>
+          </div>
+          <label class="full-width local-field"
+            >Server directory<input
+              name="directory"
+              placeholder="/home/you/minecraft/survival" /></label
+          ><label class="full-width local-field"
+            >Executable<input
+              name="executable"
+              value="java"
+              placeholder="java, or an absolute executable path" /></label
+          ><label class="full-width local-field"
+            >Arguments
+            <span class="muted">(JSON array — no shell expansion)</span
+            ><input
+              name="args"
+              value='["-Xms1G","-Xmx4G","-jar","server.jar","nogui"]'
+              spellcheck="false"
+          /></label>
+          <div class="form-section rcon-field">
+            <span class="micro-label"
+              >RCON CONNECTION
+              <span class="local-optional"
+                >· OPTIONAL FOR LOCAL SERVERS</span
+              ></span
+            >
+            <p>
+              Enable RCON in server.properties for command discovery and full
+              player lists. Use it only on trusted networks or a VPN; RCON is
+              unencrypted.
+            </p>
+          </div>
+          <label class="rcon-field"
+            >RCON port<input
+              name="rcon_port"
+              type="number"
+              min="1"
+              max="65535"
+              value="25575" /></label
+          ><label class="rcon-field"
+            >RCON password<input
+              name="rcon_password"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Stored on this computer"
+          /></label>
+          <div class="form-section agent-field" hidden>
+            <span class="micro-label">REMOTE AGENT</span>
+            <p>
+              The same Rust executable runs on the server host. Open the
+              connection guide for setup. A remote agent provides logs, metrics,
+              and process controls.
+            </p>
+          </div>
+          <label class="full-width agent-field" hidden
+            >Agent URL<input
+              name="agent_url"
+              placeholder="http://192.168.1.20:8787" /></label
+          ><label class="agent-field" hidden
+            >Remote server ID<input
+              name="agent_server_id"
+              placeholder="survival" /></label
+          ><label class="agent-field" hidden
+            >Agent token<input
+              name="agent_token"
+              type="password"
+              autocomplete="new-password"
+              placeholder="VOID_DASH_TOKEN on remote host"
+          /></label>
+        </div>
+        <p id="server-form-error" class="form-error" role="alert"></p>
+        <div class="modal-footer">
+          <button type="button" id="delete-server" class="button danger" hidden>
+            Remove server</button
+          ><span class="spacer"></span
+          ><button type="button" class="button cancel-modal">Cancel</button
+          ><button class="button primary" type="submit" id="save-server">
+            Connect server ↗
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="viewer-dialog" class="modal small-modal">
+      <form id="viewer-form">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow accent">ANOTHER PERSPECTIVE</span>
+            <h2>Add a plugin viewer</h2>
+          </div>
+          <button type="button" class="close-modal" aria-label="Close">
+            ×
+          </button>
+        </div>
+        <p class="modal-description">
+          Connect a web interface provided by a plugin running on your server.
+        </p>
+        <label
+          >Plugin preset<select id="viewer-preset">
+            <option value="squaremap">squaremap · interactive world map</option>
+            <option value="bluemap">BlueMap · 3D world map</option>
+            <option value="dynmap">Dynmap · live map</option>
+            <option value="plan">Plan · player analytics</option>
+            <option value="custom">Custom web interface</option>
+          </select></label
+        ><label
+          >Viewer name<input
+            id="viewer-name"
+            value="squaremap"
+            required
+            maxlength="80" /></label
+        ><label
+          >Website URL<input
+            id="viewer-url"
+            type="url"
+            placeholder="http://192.168.1.20:8080"
+            required
+        /></label>
+        <p class="field-hint">
+          The plugin must be installed and its website reachable from your
+          browser. Some plugins block embedding; you can always open them in a
+          new tab.
+        </p>
+        <p id="viewer-form-error" class="form-error" role="alert"></p>
+        <div class="modal-footer">
+          <span class="spacer"></span
+          ><button type="button" class="button cancel-modal">Cancel</button
+          ><button class="button primary" type="submit">Add viewer ↗</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="webview-dialog" class="modal webview-modal">
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow accent">PLUGIN VIEWER</span>
+          <h2 id="webview-title">World map</h2>
+        </div>
+        <div class="panel-tools">
+          <a
+            id="webview-external"
+            class="button"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Open in browser ↗</a
+          ><button class="close-modal" aria-label="Close viewer">×</button>
+        </div>
+      </div>
+      <p class="field-hint">
+        If the page stays blank, the plugin may block embedded views. Use “Open
+        in browser”.
+      </p>
+      <iframe
+        id="plugin-frame"
+        title="Plugin web viewer"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        referrerpolicy="no-referrer"
+      ></iframe>
+    </dialog>
+
+    <dialog id="help-dialog" class="modal">
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow accent">A QUICK FIELD GUIDE</span>
+          <h2>Meet your control room.</h2>
+        </div>
+        <button class="close-modal" aria-label="Close guide">×</button>
+      </div>
+      <div class="guide-content">
+        <p>
+          void.dash runs entirely from one Rust executable. The dashboard stays
+          on this computer; your Minecraft servers can live anywhere on your
+          trusted network.
+        </p>
+        <h3>01 / Local servers</h3>
+        <p>
+          Add an existing Minecraft server directory, Java executable, and
+          launch arguments. Start it here to stream stdout/stderr, send
+          commands, and manage its process. Host metrics describe this computer;
+          process memory is the Java process’s resident memory, not JVM heap.
+        </p>
+        <h3>02 / Network servers with RCON</h3>
+        <p>
+          Set <code>enable-rcon=true</code>, <code>rcon.port=25575</code>, and a
+          strong <code>rcon.password</code> in the server’s
+          <code>server.properties</code>. RCON supports commands and stopping.
+          Full logs, host resources, starting, and restarting require an agent.
+          Keep RCON on a trusted LAN or VPN.
+        </p>
+        <h3>03 / A remote agent</h3>
+        <p>
+          Copy the Rust binary to your server host, configure a local server
+          there (see README), and set <code>VOID_DASH_TOKEN</code> to a unique
+          token of at least 32 characters. Run:
+        </p>
+        <pre>
+void-dash --agent --bind 0.0.0.0 \
+  --config /path/to/config.json</pre>
+        <p>
+          Add that agent’s URL, token, and configured server ID here. Restrict
+          agent access to trusted machines; use a VPN or HTTPS reverse proxy
+          across untrusted networks. Tokens remain in your local configuration
+          and never enter the page.
+        </p>
+        <h3>04 / Commands & players</h3>
+        <p>
+          Click “Discover commands” after the server starts. Suggestions come
+          from the server’s help output, including plugin commands when exposed
+          by its help system. RCON help is paged; console help may expose fewer
+          commands. Minecraft status can return a player sample; RCON or console
+          <code>list</code> supplies the full list. Skin faces load from
+          mc-heads.net with a local fallback.
+        </p>
+        <h3>05 / Plugin viewers</h3>
+        <p>
+          Install squaremap, BlueMap, Dynmap, Plan, or another web plugin on
+          your Minecraft server, then add its reachable website URL. void.dash
+          embeds the site or opens it in your browser; it does not install
+          plugins or create their maps.
+        </p>
+        <p class="field-hint">
+          Stop managed servers before closing void.dash to preserve console
+          control. Closing the dashboard does not automatically stop your
+          worlds.
+        </p>
+      </div>
+    </dialog>
+
+    <dialog id="confirm-dialog" class="modal small-modal">
+      <div class="modal-header">
+        <h2 id="confirm-title">Stop server?</h2>
+        <button class="close-modal" aria-label="Cancel">×</button>
+      </div>
+      <p id="confirm-description" class="modal-description"></p>
+      <div class="modal-footer">
+        <button class="button cancel-modal">Cancel</button
+        ><button class="button primary" id="confirm-yes">Confirm</button>
+      </div>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>
