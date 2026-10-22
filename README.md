@@ -1,6 +1,6 @@
 # void.dash
 
-A quiet control room for your Minecraft worlds. Dark surfaces, warm amber (`#F5B427`), a live console, and the information you need without getting in the way.
+A quiet control room for your Minecraft worlds.
 
 **A single Rust executable with an embedded browser interface.** Run it on your computer and it opens your browser automatically. There is no Node runtime, frontend build, database, or hosted service to deploy. This version uses the system browser, rather than a native desktop window.
 
