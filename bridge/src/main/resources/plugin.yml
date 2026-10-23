@@ -1,0 +1,6 @@
+name: void-dash-bridge
+version: '0.2.0'
+main: dev.voiddash.bridge.VoidDashBridge
+api-version: '1.21'
+description: Read-only player ping and JVM heap telemetry for void.dash
+author: void.dash contributors

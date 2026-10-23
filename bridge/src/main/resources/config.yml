@@ -1,0 +1,6 @@
+# Use the loopback interface when void.dash or its agent runs on this host.
+# For another trusted LAN host, bind to your private address and restrict its firewall.
+bind: 127.0.0.1
+port: 8788
+# A unique token is generated on the first launch. Never publish this file.
+token: ''
