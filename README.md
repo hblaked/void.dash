@@ -34,9 +34,9 @@ Java and a Minecraft server are needed only on machines running a Minecraft proc
 
 | Connection | Status, icon, MOTD | Commands | Full server logs | Host resources | Start / restart |
 | --- | --- | --- | --- | --- | --- |
-| Local process launched here | Yes | stdin; optional RCON | stdout + stderr | Yes | Yes |
+| Local process launched here | Yes | stdin; optional RCON | stdout + stderr + latest.log | Yes | Yes |
 | RCON network server | Yes | RCON | Command responses only | Requires agent | Requires agent |
-| void.dash agent on server host | Yes | Remote stdin / RCON | Remote stdout + stderr | Yes | Yes |
+| void.dash agent on server host | Yes | Remote stdin / RCON | Remote console + latest.log | Yes | Yes |
 
 **Local process:** Add a server name, game address, existing directory, executable, and argument array. For example:
 
@@ -95,13 +95,35 @@ An agent token grants process-management access to that host. Restrict the liste
 
 - **Server tabs:** switch between all configured servers, with status and player count.
 - **Server identity:** real icon and MOTD from Minecraft Java's server-list status protocol. Missing icons use a built-in block icon. Formatting codes are reduced to readable text; the server's message and line breaks are retained.
-- **Console:** bounded 1,000-line buffer per managed process, stdout/stderr, command input, filter, pause, local clear, and log download. Logs are held in memory; Minecraft's own `logs/` remains the durable record.
+- **Console:** the latest 5,000 lines from stdout/stderr and `logs/latest.log`, including file-only connection/logout messages and command output. The follower handles appends, truncation, and rotation, and deduplicates matching file/console output. Automatic stdin `list` polling is removed and empty-player-list reports are omitted. Other command results remain visible. Local profiles can view the log file even when the server was launched elsewhere; commands/lifecycle still need a managed process or RCON. Minecraft's `logs/` is the durable full history; export downloads the current dashboard buffer.
 - **Completion:** select **Discover commands** once the server starts. RCON reads up to 20 help pages; local stdin reads the current help output. Completion lists server-provided command names, including plugin commands that appear in help. It does not invent argument suggestions or inspect a Brigadier command tree. Use Tab to complete, arrows to select suggestions or browse command history, and Enter to send.
-- **Resources:** host CPU and core count, host memory, process RSS, disks, process uptime, and a rolling memory graph. RSS is not JVM heap allocation, and host disk totals aggregate mounted disks. Remote telemetry requires an agent.
-- **Players:** names and skin faces. Status responses can contain only a sample; the UI labels incomplete lists. RCON `list` (or managed-process `list`) refreshes the full list every roughly 15 seconds. Sampled UUIDs are reused; otherwise faces are requested by name from `mc-heads.net`, with a built-in pixel face fallback if unavailable. Servers may disable or customize help, list, or status responses.
+- **Server resources:** measured JVM heap used versus its real maximum, server-process CPU (100% = one core), process RSS separately, and a rolling heap graph. The heap maximum comes from the JVM/bridge or the configured `-Xmx`, including Java `@argument` files. If heap measurement is unavailable, the UI says so; it never substitutes host RAM or RSS for JVM heap. Uptime appears below the active server's player count and ticks every second. Local measurements use JDK `jstat`/`jcmd` tools when installed, or the bridge below.
+- **Host computer:** a separate panel shows system CPU/core count, total host RAM, mounted disk capacity/free space, and OS uptime. Remote host metrics require a current void.dash agent.
+- **Players:** names, skin faces, and real per-player ping from the optional bridge. Without the bridge, ping is marked unavailable because the Java status protocol/RCON do not expose it. Status samples, join/leave logs, and quiet RCON list requests supply names; incomplete lists are labeled. UUIDs from status/bridge are reused for faces from `mc-heads.net`, with a built-in fallback if unavailable.
 - **Plugin viewers:** add squaremap, BlueMap, Dynmap, Plan, or a custom HTTP(S) site. View inside a sandboxed panel or open in a new browser tab. Install/configure the plugin separately; its site must be reachable from your browser. Plugins with embedding restrictions may need the external-browser option. Preset ports are suggestions and can be changed.
 
-Minecraft **Java Edition** is supported. Bedrock protocol, automatic LAN scanning, SSH process control, JVM heap/TPS collection, installation of server software/plugins, and recovery of console streams from externally launched processes are outside this version.
+Minecraft **Java Edition** is supported. Bedrock protocol, automatic LAN scanning, SSH process control, TPS collection, installation of server software/plugins, and recovery of console streams from externally launched processes are outside this version.
+
+## Player ping and exact JVM memory (Paper/Purpur/Spigot)
+
+1. Stop Minecraft and download **void-dash-bridge.jar** from the same GitHub release as the app.
+2. Put it in the Minecraft server's `plugins` directory and start the server again. Java 21 and a Bukkit-compatible 1.21 server are required.
+3. A **Local process** profile automatically reads the bridge's generated default configuration from `plugins/void-dash-bridge/config.yml` within its configured server directory. This also works for a current void.dash agent's local server profile. No RCON is required.
+4. For a custom/remote connection, use Configuration → Optional server telemetry. The default URL is `http://127.0.0.1:8788/v1/telemetry`; enter the generated `token` from the plugin configuration. Configure remote-agent telemetry on the agent's server profile, and update the agent to 0.2.0 too.
+
+The bridge is read-only. It samples Bukkit's real player ping and Java's heap MemoryMXBean/RuntimeMXBean on the main server thread once per second. HTTP only reads the last sample and requires the generated bearer token. The endpoint binds loopback by default. For another LAN computer, configure an appropriate bind address/port and firewall; use a VPN or HTTPS proxy across untrusted networks. Tokens stay in local configuration and are redacted from dashboard API responses. Do not commit server plugin configuration or tokens.
+
+A local Java 21 JDK can supply exact heap usage through `jstat` and `jcmd` even without the plugin. Set the Java executable to the JDK's `java.exe`, or make its tools available through `JAVA_HOME`/`PATH`. Some JVMs or `-XX:-UsePerfData` disable these facilities; use the bridge in that case. Process resident memory includes native memory and is intentionally separate from heap allocation.
+
+## Relative coordinates in the console
+
+Minecraft executes console commands at the console's world position (normally spawn), not at each targeted player's position. `tp @a ~ ~2 ~` is sent exactly as typed and follows that server-console behavior. To move every player two blocks up from their own location:
+
+```mcfunction
+execute as @a at @s run tp @s ~ ~2 ~
+```
+
+The console detects relevant relative-teleport commands and offers **Use player positions** to insert this form explicitly. It never silently rewrites commands.
 
 ## Development & verification
 
@@ -113,7 +135,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-Tests cover Minecraft status framing, fragmented RCON responses, help parsing, credential redaction, API session/origin checks and persistence, and a real subprocess's console and lifecycle. They use temporary directories and loopback protocol fixtures, so they require neither a Minecraft installation nor live credentials. Linux has been exercised in the cloud environment. macOS and Windows builds require validation on those systems.
+Tests cover Minecraft status framing, fragmented RCON responses, help parsing, credential redaction, API session/origin checks and persistence, real subprocess console/lifecycle, log rotation/deduplication, quiet player updates, JVM memory parsing, and bridge discovery. They use temporary directories and loopback protocol fixtures, so they require neither a Minecraft installation nor live credentials. Linux has been exercised in the cloud environment. macOS and Windows builds require validation on those systems.
 
 An optional Playwright smoke test exercises the UI against the actual Rust API and a Python Minecraft-wire fixture, including command completion, player display, persisted viewers, restart/stop, and a phone viewport. It requires Node, Python 3, Playwright, Chromium, and the debug binary:
 
@@ -125,6 +147,15 @@ PLAYWRIGHT_MODULE=/tmp/void-browser/node_modules/playwright \
 ```
 
 Set `PYTHON` or `VOID_DASH_BINARY` to override those executable paths. The test writes screenshots under the ignored `data/screenshots/` directory, manages its own application instance, and cleans up its temporary server configuration.
+
+The optional real-JVM integration check launches a Java fixture with a known 96 MiB heap and verifies the Rust API reports that heap independently of host RAM:
+
+```sh
+python3 tests/jvm-smoke.py
+# Set VOID_JDK_BIN=/path/to/jdk/bin when the JDK is not on PATH.
+```
+
+The optional bridge is built/tested with Java 21 and Maven (`mvn --file bridge/pom.xml verify`). GitHub Actions compiles against the Spigot API, runs its HTTP/authentication tests, and attaches the jar to tagged releases. No Minecraft EULA or server installation is needed for these checks.
 
 In the onboarding cloud machine, Rust is installed under `/workspace/.cargo` and `/workspace/.rustup`:
 

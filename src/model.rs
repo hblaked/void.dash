@@ -33,6 +33,10 @@ pub struct Server {
     #[serde(default)]
     pub agent_server_id: String,
     #[serde(default)]
+    pub telemetry_url: String,
+    #[serde(default)]
+    pub telemetry_token: String,
+    #[serde(default)]
     pub viewers: Vec<Viewer>,
 }
 
@@ -54,8 +58,10 @@ impl Server {
         let mut value = serde_json::to_value(self).unwrap();
         value["rcon_password"] = "".into();
         value["agent_token"] = "".into();
+        value["telemetry_token"] = "".into();
         value["has_rcon_password"] = (!self.rcon_password.is_empty()).into();
         value["has_agent_token"] = (!self.agent_token.is_empty()).into();
+        value["has_telemetry_token"] = (!self.telemetry_token.is_empty()).into();
         value
     }
 
@@ -91,6 +97,16 @@ impl Server {
         }
         for viewer in &self.viewers {
             viewer.validate()?;
+        }
+        if !self.telemetry_url.is_empty() {
+            Viewer {
+                name: "Telemetry".into(),
+                url: self.telemetry_url.clone(),
+            }
+            .validate()?;
+            if self.telemetry_token.is_empty() {
+                return Err("The telemetry bridge requires its access token.".into());
+            }
         }
         Ok(())
     }
@@ -131,6 +147,8 @@ pub struct Player {
     pub name: String,
     #[serde(default)]
     pub uuid: String,
+    #[serde(default)]
+    pub ping_ms: Option<u32>,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -144,6 +162,14 @@ pub struct Resources {
     pub disk_free: u64,
     pub disk_total: u64,
     pub cpu_count: usize,
+    #[serde(default)]
+    pub heap_used: Option<u64>,
+    #[serde(default)]
+    pub heap_max: Option<u64>,
+    #[serde(default)]
+    pub memory_limit: Option<u64>,
+    #[serde(default)]
+    pub host_uptime: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -163,6 +189,12 @@ pub struct Snapshot {
     pub command_source: String,
     pub error: Option<String>,
     pub updated_at: Option<String>,
+    #[serde(default)]
+    pub uptime_seconds: Option<u64>,
+    #[serde(default)]
+    pub telemetry_error: Option<String>,
+    #[serde(default)]
+    pub log_source: String,
 }
 
 impl Default for Snapshot {
@@ -183,6 +215,9 @@ impl Default for Snapshot {
             command_source: "unavailable".into(),
             error: None,
             updated_at: None,
+            uptime_seconds: None,
+            telemetry_error: None,
+            log_source: "console".into(),
         }
     }
 }
@@ -199,12 +234,13 @@ mod tests {
         .validate()
         .is_err());
         let s: Server = serde_json::from_value(serde_json::json!({
-            "name":"Test", "host":"localhost", "rcon_password":"private", "agent_token":"secret"
+            "name":"Test", "host":"localhost", "rcon_password":"private", "agent_token":"secret", "telemetry_token":"private-telemetry"
         }))
         .unwrap();
         let public = s.public();
         assert_eq!(public["rcon_password"], "");
         assert_eq!(public["agent_token"], "");
+        assert_eq!(public["telemetry_token"], "");
         assert_eq!(public["has_rcon_password"], true);
     }
 }

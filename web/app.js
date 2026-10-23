@@ -100,18 +100,29 @@ function demoState(index) {
     players_online: index === 0 ? 12 : index === 1 ? 3 : 0,
     players_max: 40,
     latency_ms: 3,
+    uptime_seconds: index === 2 ? null : 187409,
+    updated_at: new Date().toISOString(),
     players: (index === 0
       ? previewNames
       : index === 1
         ? previewNames.slice(0, 3)
         : []
-    ).map((name) => ({ name, uuid: "" })),
+    ).map((name, index) => ({
+      name,
+      uuid: "",
+      ping_ms: [24, 38, 16, 61, 42, 29][index],
+    })),
     player_list_complete: false,
     resources: {
       cpu: 18.4,
       cpu_count: 8,
       memory_used: 6.14 * GiB,
-      memory_total: 8 * GiB,
+      memory_total: 16 * GiB,
+      heap_used: 2.62 * GiB,
+      heap_max: 4 * GiB,
+      memory_limit: 4 * GiB,
+      process_cpu: 18.4,
+      host_uptime: 432198,
       process_memory: 4.28 * GiB,
       uptime: 187409,
       disk_free: 182.6 * GiB,
@@ -205,7 +216,8 @@ function selectedState() {
   );
 }
 function text(selector, value) {
-  $(selector).textContent = value;
+  const node = $(selector);
+  if (node) node.textContent = value;
 }
 let toastTimer;
 function toast(message, error = false) {
@@ -423,7 +435,7 @@ function render() {
     );
   text(
     "#console-host",
-    `${server.host}:${server.port} / ${server.mode === "rcon" ? "RCON responses" : "stdout + stderr"}`,
+    `${server.host}:${server.port} / ${server.mode === "rcon" ? "RCON responses" : state.log_source || "stdout + stderr"}`,
   );
   text(
     "#console-connection",
@@ -444,7 +456,8 @@ function render() {
       : "Discover commands",
   );
   $("#command-input").disabled = ui.pendingAction || !ui.online;
-  renderResources(state.resources);
+  renderResources(state.resources, state);
+  renderUptime();
   renderPlayers(state);
   renderViewers(server);
   if (!ui.demo && state.error) {
@@ -455,69 +468,116 @@ function render() {
     );
   }
 }
-function renderResources(resource) {
-  const setMeter = (selector, percent) => {
+function duration(seconds) {
+  const n = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(n / 86400)}d ${String(Math.floor((n % 86400) / 3600)).padStart(2, "0")}h ${String(Math.floor((n % 3600) / 60)).padStart(2, "0")}m ${String(n % 60).padStart(2, "0")}s`;
+}
+function renderUptime() {
+  const state = selectedState();
+  const base =
+    state.uptime_seconds ?? (state.managed ? state.resources?.uptime : null);
+  const elapsed = state.updated_at
+    ? Math.max(
+        0,
+        Math.floor((Date.now() - Date.parse(state.updated_at)) / 1000),
+      )
+    : 0;
+  text(
+    "#server-uptime",
+    base != null && (state.online || state.managed)
+      ? `Uptime ${duration(base + elapsed)}`
+      : "Uptime unavailable",
+  );
+}
+function renderResources(resource, state) {
+  const meter = (selector, percent) => {
     $(selector).style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
   };
-  if (!resource) {
-    [
-      "#memory-used",
-      "#cpu-value",
-      "#host-memory",
-      "#disk-free",
-      "#uptime",
-      "#memory-percent",
-    ].forEach((s) => text(s, "—"));
-    text("#memory-total", "/ — GB");
-    text("#cpu-cores", "— cores");
-    text("#memory-label", "HOST TELEMETRY");
-    text(
-      "#resource-note",
-      selectedServer()?.mode === "rcon"
-        ? "Connect a remote agent for host metrics and full process controls."
-        : "Waiting for host telemetry.",
-    );
-    $("#chart-area").setAttribute("d", "");
-    $("#chart-line").setAttribute("d", "");
-    setMeter("#cpu-meter", 0);
-    setMeter("#host-memory-meter", 0);
-    return;
-  }
-  const processMemory = resource.process_memory != null;
-  const memory = processMemory ? resource.process_memory : resource.memory_used;
-  const total = resource.memory_total || 1;
-  const used = memory / GiB;
+  const used = resource?.heap_used;
+  const limit = resource?.heap_max || resource?.memory_limit;
+  text("#memory-label", "JVM HEAP · USED / SERVER MAXIMUM");
+  text("#memory-used", used != null ? `${(used / GiB).toFixed(2)} GB` : "—");
   text(
-    "#memory-label",
-    processMemory
-      ? "SERVER PROCESS · RESIDENT MEMORY"
-      : "DASHBOARD HOST · MEMORY",
+    "#memory-total",
+    limit ? `/ ${(limit / GiB).toFixed(2)} GB max` : "/ unknown server max",
   );
-  text("#memory-used", `${used.toFixed(2)} GB`);
-  text("#memory-total", `/ ${(total / GiB).toFixed(0)} GB host`);
-  text("#memory-percent", `${Math.round((memory / total) * 100)}%`);
-  text("#cpu-value", `${resource.cpu.toFixed(1)}%`);
-  text("#cpu-cores", `${resource.cpu_count} cores`);
   text(
-    "#host-memory",
-    `${(resource.memory_used / GiB).toFixed(2)} / ${(total / GiB).toFixed(0)} GB`,
+    "#memory-percent",
+    used != null && limit ? `${Math.round((used / limit) * 100)}%` : "—",
   );
-  text("#disk-free", `${(resource.disk_free / GiB).toFixed(1)} GB`);
-  const seconds = resource.uptime || 0;
   text(
-    "#uptime",
-    seconds
-      ? `${Math.floor(seconds / 86400)}d ${String(Math.floor((seconds % 86400) / 3600)).padStart(2, "0")}h ${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}m`
-      : "Not managed",
+    "#process-memory",
+    resource?.process_memory != null
+      ? `${(resource.process_memory / GiB).toFixed(2)} GB`
+      : "—",
   );
+  text(
+    "#cpu-value",
+    resource?.process_cpu != null ? `${resource.process_cpu.toFixed(1)}%` : "—",
+  );
+  text("#cpu-cores", "100% = one CPU core");
+  meter("#cpu-meter", resource?.process_cpu);
   text(
     "#resource-note",
     ui.demo
-      ? "Sample telemetry · a little breathing room."
-      : "Host CPU & disks · process RSS is not JVM heap usage.",
+      ? "Sample JVM telemetry · 4 GB server heap limit."
+      : state.telemetry_error
+        ? state.telemetry_error
+        : used != null
+          ? "Heap usage measured inside the JVM. Process RAM also includes native memory."
+          : "Exact heap usage needs JDK jstat tools or the optional telemetry bridge. The host's RAM is never used as the server limit.",
   );
-  setMeter("#cpu-meter", resource.cpu);
-  setMeter("#host-memory-meter", (resource.memory_used / total) * 100);
+  const hasHost = resource?.memory_total > 0;
+  text(
+    "#host-label",
+    selectedServer()?.mode === "agent"
+      ? "REMOTE SERVER HOST"
+      : "SERVER HOST COMPUTER",
+  );
+  text("#host-cpu", hasHost ? `${resource.cpu.toFixed(1)}%` : "—");
+  text(
+    "#host-cores",
+    hasHost ? `${resource.cpu_count} logical CPUs` : "No host telemetry",
+  );
+  text(
+    "#host-memory",
+    hasHost
+      ? `${(resource.memory_used / GiB).toFixed(2)} / ${(resource.memory_total / GiB).toFixed(2)} GB`
+      : "—",
+  );
+  text(
+    "#host-memory-detail",
+    hasHost
+      ? `${Math.round((resource.memory_used / resource.memory_total) * 100)}% of host RAM`
+      : "Requires a local process or agent",
+  );
+  text(
+    "#disk-free",
+    hasHost ? `${(resource.disk_free / GiB).toFixed(1)} GB` : "—",
+  );
+  text(
+    "#disk-total",
+    hasHost
+      ? `${(resource.disk_total / GiB).toFixed(1)} GB total mounted disks`
+      : "No host telemetry",
+  );
+  text("#host-uptime", hasHost ? duration(resource.host_uptime || 0) : "—");
+  text(
+    "#host-note",
+    hasHost
+      ? "System-wide resources on the machine running the server."
+      : "Connect a void.dash agent on the server host for its CPU, memory, disks, and uptime.",
+  );
+  meter("#host-cpu-meter", hasHost ? resource.cpu : 0);
+  meter(
+    "#host-memory-meter",
+    hasHost ? (resource.memory_used / resource.memory_total) * 100 : 0,
+  );
+  if (used == null || !limit) {
+    $("#chart-area").setAttribute("d", "");
+    $("#chart-line").setAttribute("d", "");
+    return;
+  }
   if (!ui.charts[ui.selected])
     ui.charts[ui.selected] = ui.demo
       ? [
@@ -525,10 +585,10 @@ function renderResources(resource) {
           52, 53, 53,
         ]
       : [];
-  const history = ui.charts[ui.selected];
-  const now = Date.now();
+  const history = ui.charts[ui.selected],
+    now = Date.now();
   if (!history.lastAt || now - history.lastAt >= 2500) {
-    history.push((memory / total) * 100);
+    history.push((used / limit) * 100);
     if (history.length > 21) history.shift();
     history.lastAt = now;
   }
@@ -546,7 +606,7 @@ function renderResources(resource) {
 function renderPlayers(state) {
   const list = $("#players-list");
   list.replaceChildren();
-  const players = state.players || [];
+  const players = state.online ? state.players || [] : [];
   text("#player-count", `${state.players_online || 0} PLAYERS ONLINE`);
   text(
     "#players-slots",
@@ -601,7 +661,16 @@ function renderPlayers(state) {
     if (!ui.demo)
       label.replaceChildren(el("i"), document.createTextNode("Connected"));
     info.append(el("span", "player-name", player.name), label);
-    node.append(face, info);
+    const ping = el(
+      "span",
+      "player-ping",
+      player.ping_ms != null ? `${player.ping_ms} ms` : "— ms",
+    );
+    ping.title =
+      player.ping_ms != null
+        ? "Player network latency measured by the server"
+        : "Install/configure the telemetry bridge to read player ping.";
+    node.append(face, info, ping);
     list.append(node);
   });
 }
@@ -711,7 +780,38 @@ function renderLogs() {
   output.append(fragment);
   if (nearBottom) output.scrollTop = output.scrollHeight;
 }
+function playerRelativeTeleport(command) {
+  const parts = command.trim().replace(/^\//, "").split(/\s+/);
+  if (
+    !["tp", "teleport", "minecraft:tp", "minecraft:teleport"].includes(
+      parts[0],
+    ) ||
+    ![5, 7].includes(parts.length)
+  )
+    return null;
+  if (!/^(?:@[paresn](?:\[[^ ]*\])?|[A-Za-z0-9_]{1,16})$/.test(parts[1]))
+    return null;
+  if (!parts.slice(2, 5).some((v) => v.startsWith("~") || v.startsWith("^")))
+    return null;
+  const coordinate = /^[~^]?(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+))?$/;
+  if (!parts.slice(2, 5).every((v) => coordinate.test(v))) return null;
+  return `execute as ${parts[1]} at @s run ${parts[0]} @s ${parts.slice(2).join(" ")}`;
+}
+function coordinateHint() {
+  const suggested = playerRelativeTeleport($("#command-input").value);
+  $("#coordinate-hint").hidden = !suggested;
+  if (suggested) text("#coordinate-command", suggested);
+}
+$("#use-player-coordinates").addEventListener("click", () => {
+  const suggested = playerRelativeTeleport($("#command-input").value);
+  if (suggested) {
+    $("#command-input").value = suggested;
+    coordinateHint();
+    $("#command-input").focus();
+  }
+});
 function suggestions() {
+  coordinateHint();
   const value = $("#command-input").value.replace(/^\//, "");
   if (!value || value.includes(" ")) {
     $("#autocomplete").hidden = true;
@@ -823,6 +923,7 @@ async function sendCommand(event) {
     if (ui.history.length > 100) ui.history.shift();
     ui.historyIndex = ui.history.length;
     input.value = "";
+    coordinateHint();
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -915,6 +1016,9 @@ function openServerDialog(edit = false) {
     form.elements.rcon_password.placeholder = ui.editing.has_rcon_password
       ? "Leave blank to keep existing password"
       : "RCON password";
+    form.elements.telemetry_token.placeholder = ui.editing.has_telemetry_token
+      ? "Leave blank to keep existing token"
+      : "Telemetry bridge token";
     form.elements.agent_token.placeholder = ui.editing.has_agent_token
       ? "Leave blank to keep existing token"
       : "Agent token";
@@ -999,23 +1103,12 @@ function showViewerDialog() {
 
 $("#add-server").addEventListener("click", () => openServerDialog());
 $("#connect-first").addEventListener("click", () => openServerDialog());
-$("#settings-button").addEventListener("click", () => openServerDialog(true));
 $("#configure-tab").addEventListener("click", () => openServerDialog(true));
 $("#help-button").addEventListener("click", () =>
   $("#help-dialog").showModal(),
 );
-$("#overview-button").addEventListener("click", () =>
-  window.scrollTo({ top: 0, behavior: "smooth" }),
-);
 $("#overview-tab").addEventListener("click", () =>
   $("#console-panel").scrollIntoView({ behavior: "smooth", block: "center" }),
-);
-$("#focus-console").addEventListener("click", () => {
-  $("#console-panel").scrollIntoView({ behavior: "smooth", block: "center" });
-  $("#command-input").focus({ preventScroll: true });
-});
-$("#focus-viewers").addEventListener("click", () =>
-  $("#viewers-panel").scrollIntoView({ behavior: "smooth", block: "center" }),
 );
 $$(".close-modal,.cancel-modal").forEach((button) =>
   button.addEventListener("click", () => button.closest("dialog").close()),
@@ -1164,7 +1257,7 @@ document.addEventListener("click", (event) => {
     $("#autocomplete").hidden = true;
 });
 function clock() {
-  text("#clock", new Date().toLocaleTimeString("en-GB"));
+  renderUptime();
 }
 clock();
 setInterval(clock, 1000);

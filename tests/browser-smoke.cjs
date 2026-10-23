@@ -3,7 +3,7 @@
    No npm packages are required by the application itself. */
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const { spawn } = require("node:child_process");
-const { mkdtemp, rm, mkdir } = require("node:fs/promises");
+const { mkdtemp, rm, mkdir, writeFile } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const net = require("node:net");
@@ -23,12 +23,50 @@ async function freePort() {
   const directory = await mkdtemp(join(tmpdir(), "void-browser-"));
   const appPort = await freePort(),
     gamePort = await freePort();
-  const viewer = http.createServer((_, response) => {
+  const telemetryToken = "test-only-telemetry-token-32-characters";
+  const telemetryStarted = Date.now();
+  const viewer = http.createServer((request, response) => {
+    if (request.url === "/v1/telemetry") {
+      if (request.headers.authorization !== `Bearer ${telemetryToken}`) {
+        response.writeHead(401);
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          heap_used: 128 * 1024 ** 2,
+          heap_max: 512 * 1024 ** 2,
+          uptime_seconds:
+            3600 + Math.floor((Date.now() - telemetryStarted) / 1000),
+          sampled_at_ms: Date.now(),
+          players: [
+            {
+              name: "Alex",
+              uuid: "ec561538-f3fd-461d-aff5-086b22154bce",
+              ping_ms: 42,
+            },
+          ],
+        }),
+      );
+      return;
+    }
     response.writeHead(200, { "Content-Type": "text/html" });
     response.end("<p>Test plugin viewer</p>");
   });
   await new Promise((resolve) => viewer.listen(0, "127.0.0.1", resolve));
   const viewerUrl = `http://127.0.0.1:${viewer.address().port}/`;
+  const pluginDirectory = join(
+    directory,
+    "minecraft",
+    "plugins",
+    "void-dash-bridge",
+  );
+  await mkdir(pluginDirectory, { recursive: true });
+  await writeFile(
+    join(pluginDirectory, "config.yml"),
+    `bind: 127.0.0.1\nport: ${viewer.address().port}\ntoken: '${telemetryToken}'\n`,
+  );
   const application = spawn(
     process.env.VOID_DASH_BINARY || resolve("target/debug/void-dash"),
     [
@@ -82,6 +120,25 @@ async function freePort() {
     await page.goto(`http://127.0.0.1:${appPort}`);
     await page.waitForSelector(".log-line");
     assert.equal(await page.locator(".server-tab").count(), 3);
+    assert.equal(await page.locator(".brand,.rail,.page-heading").count(), 0);
+    assert.equal(
+      await page
+        .getByText("Built for the worlds worth keeping.", { exact: false })
+        .count(),
+      0,
+    );
+    assert.ok(
+      await page
+        .locator("#memory-total")
+        .textContent()
+        .then((s) => s.includes("4.00 GB max")),
+    );
+    assert.ok(
+      await page
+        .locator("#host-memory")
+        .textContent()
+        .then((s) => s.includes("16.00 GB")),
+    );
     await page.screenshot({
       path: "data/screenshots/desktop.png",
       fullPage: true,
@@ -124,6 +181,8 @@ async function freePort() {
       resolve("tests/fixture_server.py"),
       "--port",
       String(gamePort),
+      "--directory",
+      join(directory, "minecraft"),
     ]);
     let externalOutput = "";
     externalServer.stdout.on("data", (chunk) => (externalOutput += chunk));
@@ -135,7 +194,7 @@ async function freePort() {
     await page.locator("#add-server").click();
     await page.locator("[name=name]").fill("Browser test world");
     await page.locator("[name=port]").fill(String(gamePort));
-    await page.locator("[name=directory]").fill(resolve("."));
+    await page.locator("[name=directory]").fill(join(directory, "minecraft"));
     await page
       .locator("[name=executable]")
       .fill(process.env.PYTHON || "python3");
@@ -147,6 +206,8 @@ async function freePort() {
           resolve("tests/fixture_server.py"),
           "--port",
           String(gamePort),
+          "--directory",
+          join(directory, "minecraft"),
         ]),
       );
     await page.locator("#save-server").click();
@@ -164,6 +225,7 @@ async function freePort() {
     const inventory = await (
       await page.request.get(`http://127.0.0.1:${appPort}/api/servers`)
     ).json();
+    assert.equal(JSON.stringify(inventory).includes(telemetryToken), false);
     const response = await page.request.post(
       `http://127.0.0.1:${appPort}/api/servers/${inventory.servers[0].id}/action/restart`,
     );
@@ -212,6 +274,52 @@ async function freePort() {
       .getByText("Executed: say browser check", { exact: true })
       .waitFor({ timeout: 10000 });
     await page.getByText("Alex", { exact: true }).waitFor();
+    await page.getByText("42 ms", { exact: true }).waitFor();
+    assert.equal(
+      await page.locator("#memory-total").textContent(),
+      "/ 0.50 GB max",
+    );
+    assert.equal(await page.locator("#memory-used").textContent(), "0.13 GB");
+    assert.ok(
+      (await page.locator("#server-uptime").textContent()).startsWith(
+        "Uptime 0d 01h",
+      ),
+    );
+    await page
+      .getByText("File-only connection: Alex logged in", { exact: true })
+      .first()
+      .waitFor();
+    assert.equal(
+      await page
+        .getByText("There are 0 of a max of 20 players online:", {
+          exact: false,
+        })
+        .count(),
+      0,
+    );
+    await page.locator("#command-input").fill("tp @a ~ ~2 ~");
+    await page.locator("#coordinate-hint").waitFor({ state: "visible" });
+    assert.equal(
+      await page.locator("#command-input").inputValue(),
+      "tp @a ~ ~2 ~",
+    );
+    await page.keyboard.press("Enter");
+    await page.getByText("Executed: tp @a ~ ~2 ~", { exact: true }).waitFor();
+    await page.locator("#command-input").fill("tp @a ~ ~2 ~");
+    await page.locator("#use-player-coordinates").click();
+    assert.equal(
+      await page.locator("#command-input").inputValue(),
+      "execute as @a at @s run tp @s ~ ~2 ~",
+    );
+    await page.keyboard.press("Enter");
+    await page
+      .getByText("Executed: execute as @a at @s run tp @s ~ ~2 ~", {
+        exact: true,
+      })
+      .waitFor();
+    checks.push(
+      "Removed branding/sidebar, separate host panel, JVM maximum instead of host RAM, player ping, server uptime, full file logs, no zero-list spam, unchanged console commands and explicit player-relative teleport helper",
+    );
     checks.push(
       "Real Rust API, persisted server, process launch, Minecraft status, live logs, players, server-derived completion, command execution",
     );

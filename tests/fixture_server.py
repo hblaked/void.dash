@@ -3,10 +3,23 @@ import argparse
 import json
 import socket
 import threading
+from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--port", type=int, required=True)
+parser.add_argument("--directory")
 args = parser.parse_args()
+log_path = Path(args.directory) / 'logs/latest.log' if args.directory else None
+if log_path:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def emit(text, file_only=False):
+    if log_path:
+        with log_path.open('a', encoding='utf-8') as file:
+            file.write(text + '\n')
+    if not file_only:
+        print(text, flush=True)
 listener = socket.socket()
 listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 listener.bind(("127.0.0.1", args.port))
@@ -63,22 +76,25 @@ def serve_status():
 
 
 threading.Thread(target=serve_status, daemon=True).start()
-print("[Server thread/INFO]: Done (0.1s)! Fixture ready.", flush=True)
+emit("[Server thread/INFO]: Done (0.1s)! Fixture ready.")
+emit("[Server thread/INFO]: File-only connection: Alex logged in", file_only=True)
+emit("[Server thread/INFO]: There are 0 of a max of 20 players online: ", file_only=True)
 try:
     while True:
         command = input().strip()
         if command == "stop":
-            print("[Server thread/INFO]: World saved. Fixture stopped.", flush=True)
+            emit("[Server thread/INFO]: Alex left the game")
+            emit("[Server thread/INFO]: World saved. Fixture stopped.")
             break
         if command.startswith("help"):
-            print("[Server thread/INFO]: /help: Show commands", flush=True)
-            print("[Server thread/INFO]: /list: List players", flush=True)
-            print("[Server thread/INFO]: /say: Send a message", flush=True)
-            print("[Server thread/INFO]: /stop: Stop server", flush=True)
+            emit("[Server thread/INFO]: /help: Show commands")
+            emit("[Server thread/INFO]: /list: List players")
+            emit("[Server thread/INFO]: /say: Send a message")
+            emit("[Server thread/INFO]: /stop: Stop server")
         elif command == "list":
-            print("[Server thread/INFO]: There are 1 of a max of 20 players online: Alex", flush=True)
+            emit("[Server thread/INFO]: There are 1 of a max of 20 players online: Alex")
         else:
-            print("[Server thread/INFO]: Executed: " + command, flush=True)
+            emit("[Server thread/INFO]: Executed: " + command)
 except EOFError:
     pass
 finally:

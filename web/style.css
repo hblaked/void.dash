@@ -1893,3 +1893,212 @@ body:has(dialog[open]) {
     transition: none !important;
   }
 }
+
+/* The workspace is intentionally just server tabs and the selected server. */
+.topbar {
+  height: 60px;
+  position: sticky;
+  top: 0;
+  padding: 0 30px;
+  gap: 12px;
+  z-index: 10;
+}
+#server-tabs {
+  flex: 1;
+  max-width: none;
+}
+main {
+  margin: 0 auto;
+  max-width: 1540px;
+  padding: 26px 30px 0;
+}
+.server-identity {
+  padding: 0 0 22px;
+}
+.server-uptime {
+  color: #baa274;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+.resource-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.resources-panel {
+  display: flex;
+  flex-direction: column;
+}
+.resource-body .resource-row {
+  align-self: stretch;
+}
+.resource-body .resource-note {
+  margin-top: auto;
+  padding-top: 15px;
+}
+.resource-body .chart-wrap {
+  flex-shrink: 0;
+}
+.player {
+  gap: 8px;
+}
+.player-info {
+  flex: 1;
+}
+.player-ping {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: #aaae7c;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.host-panel {
+  margin-top: 20px;
+}
+.host-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 22px 0 14px;
+}
+.host-stats > div {
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-right: 1px solid var(--line);
+}
+.host-stats > div:last-child {
+  border: 0;
+}
+.host-stats strong {
+  font-weight: 400;
+  font-size: 17px;
+  color: #dbc18b;
+  font-variant-numeric: tabular-nums;
+}
+.host-detail {
+  color: var(--muted);
+  font-size: 9px;
+}
+.host-stats .meter {
+  margin: 0;
+  width: 100%;
+}
+.host-note {
+  margin: 0;
+  padding: 0 24px 18px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+}
+.coordinate-hint {
+  padding: 10px 16px;
+  border-top: 1px solid var(--line-bright);
+  background: #2a2010;
+  color: #c6b080;
+  font-size: 9px;
+  line-height: 1.7;
+}
+.coordinate-hint code {
+  display: block;
+  font-family: var(--mono);
+  color: var(--amber);
+  overflow-wrap: anywhere;
+  margin: 4px 0;
+}
+.coordinate-hint button {
+  padding: 0;
+  color: var(--amber);
+}
+.page-footer {
+  justify-content: flex-end;
+}
+@media (max-width: 850px) {
+  main {
+    margin: 0 auto;
+    padding: 23px 20px 0;
+  }
+  .topbar {
+    padding: 0 20px;
+  }
+  #server-tabs {
+    max-width: none;
+  }
+  .resources-panel {
+    height: 410px;
+  }
+  .host-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 25px;
+  }
+  .host-stats > div:nth-child(2) {
+    border: 0;
+  }
+  .host-stats strong {
+    font-size: 15px;
+  }
+}
+@media (max-width: 560px) {
+  main {
+    padding: 20px 15px 0;
+  }
+  .topbar {
+    padding: 0 15px;
+    height: 56px;
+  }
+  #server-tabs {
+    max-width: none;
+  }
+  .identity-status {
+    min-width: 94px;
+  }
+  .server-uptime {
+    font-size: 7px;
+  }
+  .server-icon {
+    width: 45px;
+    height: 45px;
+  }
+  .identity-title h2 {
+    font-size: 14px;
+  }
+  .motd {
+    font-size: 8px;
+  }
+  .player-ping {
+    font-size: 8px;
+  }
+  .player-face {
+    height: 26px;
+    width: 26px;
+  }
+  .players-list {
+    padding: 18px 13px;
+    gap: 18px 12px;
+  }
+  .host-stats > div {
+    padding: 0 16px;
+  }
+  .host-stats strong {
+    font-size: 12px;
+  }
+  .host-detail {
+    font-size: 8px;
+    line-height: 1.5;
+  }
+  .host-note {
+    padding: 0 16px 15px;
+    font-size: 8px;
+  }
+  .section-tabs {
+    gap: 13px;
+  }
+  .resources-panel {
+    height: 405px;
+  }
+  .coordinate-hint {
+    font-size: 8px;
+    padding: 9px 12px;
+  }
+}

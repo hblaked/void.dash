@@ -134,6 +134,7 @@ pub async fn status(host: &str, port: u16) -> Result<Status> {
                         Some(Player {
                             name: p["name"].as_str()?.into(),
                             uuid: p["id"].as_str().unwrap_or("").into(),
+                            ping_ms: None,
                         })
                     })
                     .collect()

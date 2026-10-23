@@ -1,6 +1,8 @@
+mod logtail;
 mod manager;
 mod model;
 mod protocol;
+mod telemetry;
 
 use axum::{
     extract::{DefaultBodyLimit, Path, Request, State},

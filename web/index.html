@@ -15,11 +15,6 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="void.dash home"
-          ><span class="brand-mark">v<span>_</span></span
-          ><span>void<span class="brand-dot">.</span>dash</span></a
-        >
-        <div class="top-divider"></div>
         <nav id="server-tabs" aria-label="Minecraft servers"></nav>
         <button
           class="add-server icon-button"
@@ -29,86 +24,9 @@
         >
           +
         </button>
-        <span class="workspace"
-          ><span class="tiny-square"></span> LOCAL WORKSPACE</span
-        >
-        <button
-          class="avatar"
-          id="help-button"
-          aria-label="Open connection guide"
-          title="Connection guide"
-        >
-          ?
-        </button>
       </header>
 
-      <aside class="rail" aria-label="Application navigation">
-        <button
-          class="rail-button active"
-          id="overview-button"
-          aria-label="Server overview"
-          title="Server overview"
-        >
-          <svg viewBox="0 0 24 24">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-          </svg>
-        </button>
-        <button
-          class="rail-button"
-          id="focus-console"
-          aria-label="Focus console"
-          title="Focus console"
-        >
-          <svg viewBox="0 0 24 24"><path d="m5 6 6 6-6 6m9 0h5" /></svg>
-        </button>
-        <button
-          class="rail-button"
-          id="focus-viewers"
-          aria-label="Plugin viewers"
-          title="Plugin viewers"
-        >
-          <svg viewBox="0 0 24 24">
-            <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zm6-3v15m6-12v15" />
-          </svg>
-        </button>
-        <div class="rail-bottom">
-          <button
-            class="rail-button"
-            id="settings-button"
-            aria-label="Edit selected server"
-            title="Server settings"
-          >
-            <svg viewBox="0 0 24 24">
-              <path
-                d="m10 3-1 3-3 1-2 3 2 2-1 3 2 3h3l2 3 3-1 1-3 3-1 1-3-2-2V8l-3-2-2-3z"
-              />
-              <circle cx="12" cy="12" r="3" />
-            </svg></button
-          ><span class="rail-version">v0.1</span>
-        </div>
-      </aside>
-
       <main>
-        <div class="page-heading">
-          <div>
-            <div class="eyebrow">
-              <span class="accent">WORKSPACE</span><span>/</span> SERVER
-              OVERVIEW
-            </div>
-            <h1>Your world. <span>Under control.</span></h1>
-            <p>A little less administration. A little more Minecraft.</p>
-          </div>
-          <div class="heading-right">
-            <span id="clock">--:--:--</span
-            ><span id="connection-status"
-              ><i class="status-dot"></i> CONNECTING</span
-            >
-          </div>
-        </div>
-
         <div id="demo-banner" class="demo-banner" hidden>
           <span
             ><span class="preview-tag">PREVIEW</span> A look around your next
@@ -132,7 +50,8 @@
           </div>
           <div class="identity-status">
             <span class="online-badge" id="online-badge"><i></i> CHECKING</span
-            ><span id="game-version">—</span><span id="identity-players"></span>
+            ><span id="game-version">—</span><span id="identity-players"></span
+            ><span id="server-uptime" class="server-uptime">Uptime —</span>
           </div>
           <div class="identity-signal" aria-label="Server latency">
             <svg viewBox="0 0 25 22">
@@ -153,6 +72,13 @@
               <span>◈</span> Overview</button
             ><button class="section-tab" id="configure-tab">
               <span>⚙</span> Configuration
+            </button>
+            <button
+              id="help-button"
+              class="section-tab"
+              aria-label="Open connection guide"
+            >
+              ? Guide
             </button>
           </div>
           <div class="server-actions">
@@ -256,6 +182,19 @@
                 </button>
               </form>
             </div>
+            <div id="coordinate-hint" class="coordinate-hint" hidden>
+              <span
+                >Console-relative coordinates use spawn. To move each target
+                relative to themselves:</span
+              ><code id="coordinate-command"></code
+              ><button
+                id="use-player-coordinates"
+                type="button"
+                class="text-button"
+              >
+                Use player positions ↗
+              </button>
+            </div>
             <div class="console-footer">
               <span
                 ><kbd>TAB</kbd> autocomplete
@@ -280,9 +219,9 @@
             <div class="panel-heading">
               <div class="panel-title">
                 <span class="panel-number">02</span>
-                <h3 id="resources-title">System resources</h3>
+                <h3 id="resources-title">Server resources</h3>
               </div>
-              <span class="micro-label">HOST HEALTH</span>
+              <span class="micro-label">MINECRAFT JVM</span>
             </div>
             <div class="resource-body">
               <div class="memory-heading">
@@ -330,7 +269,7 @@
               </div>
               <div class="chart-time"><span>60s ago</span><span>now</span></div>
               <div class="resource-row">
-                <div><span class="resource-symbol">▥</span> CPU usage</div>
+                <div><span class="resource-symbol">▥</span> Server CPU</div>
                 <div>
                   <strong id="cpu-value">—</strong
                   ><span id="cpu-cores">— cores</span>
@@ -338,22 +277,13 @@
               </div>
               <div class="meter"><i id="cpu-meter"></i></div>
               <div class="resource-row">
-                <div><span class="resource-symbol">▣</span> Host memory</div>
-                <div><strong id="host-memory">—</strong></div>
-              </div>
-              <div class="meter"><i id="host-memory-meter"></i></div>
-              <div class="resource-bottom">
                 <div>
-                  <span class="micro-label">DISK AVAILABLE</span
-                  ><strong id="disk-free">—</strong>
+                  <span class="resource-symbol">▣</span> Process RAM (RSS)
                 </div>
-                <div>
-                  <span class="micro-label">PROCESS UPTIME</span
-                  ><strong id="uptime">—</strong>
-                </div>
+                <div><strong id="process-memory">—</strong></div>
               </div>
               <p id="resource-note" class="resource-note">
-                Waiting for host telemetry.
+                Start the server to collect JVM telemetry.
               </p>
             </div>
           </section>
@@ -362,7 +292,7 @@
             <div class="panel-heading">
               <div class="panel-title">
                 <span class="panel-number">03</span>
-                <h3 id="players-title">The people make the world.</h3>
+                <h3 id="players-title">Connected players</h3>
               </div>
               <span class="tag player-count" id="player-count"
                 >0 PLAYERS ONLINE</span
@@ -387,7 +317,7 @@
             <div class="panel-heading">
               <div class="panel-title">
                 <span class="panel-number">04</span>
-                <h3 id="viewers-title">A window into your world</h3>
+                <h3 id="viewers-title">Plugin viewers</h3>
               </div>
               <button id="add-viewer" class="text-button">+ Add viewer</button>
             </div>
@@ -397,14 +327,43 @@
             </div>
           </section>
         </div>
+        <section class="panel host-panel" aria-labelledby="host-title">
+          <div class="panel-heading">
+            <div class="panel-title">
+              <span class="panel-number">05</span>
+              <h3 id="host-title">Host computer</h3>
+            </div>
+            <span id="host-label" class="micro-label">HOST RESOURCES</span>
+          </div>
+          <div class="host-stats">
+            <div>
+              <span class="micro-label">TOTAL CPU USAGE</span
+              ><strong id="host-cpu">—</strong
+              ><span id="host-cores" class="host-detail">—</span>
+              <div class="meter"><i id="host-cpu-meter"></i></div>
+            </div>
+            <div>
+              <span class="micro-label">SYSTEM MEMORY</span
+              ><strong id="host-memory">—</strong
+              ><span id="host-memory-detail" class="host-detail">—</span>
+              <div class="meter"><i id="host-memory-meter"></i></div>
+            </div>
+            <div>
+              <span class="micro-label">DISK AVAILABLE</span
+              ><strong id="disk-free">—</strong
+              ><span id="disk-total" class="host-detail">—</span>
+            </div>
+            <div>
+              <span class="micro-label">HOST UPTIME</span
+              ><strong id="host-uptime">—</strong
+              ><span class="host-detail">Operating system runtime</span>
+            </div>
+          </div>
+          <p id="host-note" class="host-note">Waiting for host metrics.</p>
+        </section>
         <footer class="page-footer">
-          <span
-            ><span class="footer-logo">v_</span> Built for the worlds worth
-            keeping.</span
-          ><span
-            ><span class="accent">RUST POWERED</span
-            ><span class="footer-divider">/</span> void.dash
-            <span class="muted">0.1.1</span></span
+          <span class="muted"
+            >void.dash <span id="app-version">0.2.0</span></span
           >
         </footer>
       </main>
@@ -526,6 +485,30 @@
               autocomplete="new-password"
               placeholder="VOID_DASH_TOKEN on remote host"
           /></label>
+          <div class="form-section">
+            <span class="micro-label">OPTIONAL SERVER TELEMETRY</span>
+            <p>
+              Install void-dash-bridge.jar on Paper/Purpur/Spigot for real
+              player ping and exact JVM heap usage. Local servers automatically
+              detect its default configuration in the server directory. For a
+              custom or remote connection, enter its URL and the token from
+              plugins/void-dash-bridge/config.yml. For an agent, configure this
+              on the agent host instead.
+            </p>
+          </div>
+          <label class="full-width"
+            >Telemetry URL<input
+              name="telemetry_url"
+              type="url"
+              placeholder="http://127.0.0.1:8788/v1/telemetry"
+          /></label>
+          <label class="full-width"
+            >Telemetry token<input
+              name="telemetry_token"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Token from the server plugin configuration"
+          /></label>
         </div>
         <p id="server-form-error" class="form-error" role="alert"></p>
         <div class="modal-footer">
@@ -634,9 +617,9 @@
         <h3>01 / Local servers</h3>
         <p>
           Add an existing Minecraft server directory, Java executable, and
-          launch arguments. Start it here to stream stdout/stderr, send
-          commands, and manage its process. Host metrics describe this computer;
-          process memory is the Java process’s resident memory, not JVM heap.
+          launch arguments. Start it here to send commands and manage its
+          process. Logs include stdout/stderr and logs/latest.log. JVM heap is
+          shown against the server's own maximum; the host has a separate panel.
         </p>
         <h3>02 / Network servers with RCON</h3>
         <p>
@@ -676,6 +659,23 @@ void-dash --agent --bind 0.0.0.0 \
           your Minecraft server, then add its reachable website URL. void.dash
           embeds the site or opens it in your browser; it does not install
           plugins or create their maps.
+        </p>
+        <h3>06 / Player ping and exact heap usage</h3>
+        <p>
+          Install void-dash-bridge.jar in your Paper/Purpur/Spigot plugins
+          folder and restart Minecraft. A local profile automatically detects
+          its default loopback configuration using your server directory. The
+          bridge supplies real player ping, JVM heap used/max, and uptime. Local
+          JDK jstat/jcmd tools can also measure heap usage without a plugin.
+          Missing measurements are shown as unavailable; host RAM is never the
+          JVM limit.
+        </p>
+        <h3>07 / Relative teleport commands</h3>
+        <p>
+          The server console has no player location. To move every player two
+          blocks above their own position, use
+          <code>execute as @a at @s run tp @s ~ ~2 ~</code>. Commands are sent
+          unchanged; the console offers a player-relative helper when relevant.
         </p>
         <p class="field-hint">
           Stop managed servers before closing void.dash to preserve console

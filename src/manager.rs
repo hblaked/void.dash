@@ -1,6 +1,6 @@
-use crate::{model::*, protocol};
+use crate::{logtail, model::*, protocol, telemetry};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -21,6 +21,20 @@ pub struct ManagedProcess {
     pub child: Child,
     pub stdin: ChildStdin,
     pub started: Instant,
+    pub heap_max: Option<u64>,
+    pub heap_checked: bool,
+}
+#[derive(Clone, Copy, PartialEq)]
+enum LogSource {
+    Dashboard,
+    Console,
+    File,
+}
+struct SeenLog {
+    source: LogSource,
+    body: String,
+    stamp: Option<String>,
+    seen: Instant,
 }
 pub struct Manager {
     pub config: Mutex<Config>,
@@ -32,6 +46,7 @@ pub struct Manager {
     pub token: String,
     pub agent: bool,
     pub next_log: AtomicU64,
+    recent_logs: Mutex<HashMap<String, VecDeque<SeenLog>>>,
 }
 impl Manager {
     pub async fn new(path: PathBuf, token: String, agent: bool) -> Result<App> {
@@ -63,6 +78,7 @@ impl Manager {
             token,
             agent,
             next_log: AtomicU64::new(1),
+            recent_logs: Mutex::new(HashMap::new()),
         }))
     }
     pub async fn server(&self, id: &str) -> Result<Server> {
@@ -115,6 +131,9 @@ impl Manager {
             if server.agent_token.is_empty() {
                 server.agent_token = entry.agent_token.clone();
             }
+            if server.telemetry_token.is_empty() {
+                server.telemetry_token = entry.telemetry_token.clone();
+            }
             server.validate()?;
             *entry = server.clone();
         } else {
@@ -163,11 +182,86 @@ impl Manager {
         Ok(())
     }
     pub async fn log(&self, id: &str, text: String) {
-        let text: String = text
-            .chars()
-            .filter(|c| !c.is_control() || *c == '\t')
-            .take(16_384)
+        self.ingest_log(id, text, LogSource::Dashboard).await;
+    }
+    async fn update_player_list(&self, id: &str, line: &str) -> Option<u32> {
+        let (count, names) = logtail::list_report(line)?;
+        let mut snapshots = self.snapshots.write().await;
+        let snapshot = snapshots.entry(id.into()).or_default();
+        let previous = std::mem::take(&mut snapshot.players);
+        snapshot.players = names
+            .into_iter()
+            .map(|name| {
+                previous
+                    .iter()
+                    .find(|p| p.name == name)
+                    .cloned()
+                    .unwrap_or(Player {
+                        name,
+                        uuid: String::new(),
+                        ping_ms: None,
+                    })
+            })
             .collect();
+        snapshot.players_online = count;
+        snapshot.player_list_complete = snapshot.players.len() == count as usize;
+        Some(count)
+    }
+    async fn ingest_log(&self, id: &str, text: String, source: LogSource) {
+        let text = logtail::clean_message(&text);
+        // Do not display the old automatic empty-list chatter; still update metadata.
+        if self.update_player_list(id, &text).await == Some(0) {
+            return;
+        }
+        let body = logtail::message_body(&text);
+        for (suffix, joined) in [(" joined the game", true), (" left the game", false)] {
+            if let Some(name) = body
+                .strip_suffix(suffix)
+                .filter(|n| !n.is_empty() && !n.contains(' '))
+            {
+                let mut snapshots = self.snapshots.write().await;
+                let snapshot = snapshots.entry(id.into()).or_default();
+                if joined && !snapshot.players.iter().any(|p| p.name == name) {
+                    snapshot.players.push(Player {
+                        name: name.into(),
+                        uuid: String::new(),
+                        ping_ms: None,
+                    });
+                } else if !joined {
+                    snapshot.players.retain(|p| p.name != name);
+                }
+            }
+        }
+        let stamp = text
+            .get(1..9)
+            .filter(|_| text.starts_with('['))
+            .filter(|s| {
+                s.bytes().all(|b| b.is_ascii_digit() || b == b':')
+                    && s.as_bytes().get(2) == Some(&b':')
+            })
+            .map(str::to_owned);
+        if source != LogSource::Dashboard {
+            let mut recent = self.recent_logs.lock().await;
+            let seen = recent.entry(id.into()).or_default();
+            seen.retain(|s| s.seen.elapsed().as_secs() < 5);
+            if let Some(index) = seen.iter().position(|s| {
+                s.source != source
+                    && s.body == body
+                    && (s.stamp.is_none() || stamp.is_none() || s.stamp == stamp)
+            }) {
+                seen.remove(index);
+                return;
+            }
+            seen.push_back(SeenLog {
+                source,
+                body: body.into(),
+                stamp: stamp.clone(),
+                seen: Instant::now(),
+            });
+            if seen.len() > 5000 {
+                seen.pop_front();
+            }
+        }
         let level = if text.contains("ERROR") || text.contains("Exception") {
             "error"
         } else if text.contains("WARN") {
@@ -177,36 +271,46 @@ impl Manager {
         };
         let entry = LogLine {
             id: self.next_log.fetch_add(1, Ordering::Relaxed),
-            time: chrono::Local::now().format("%H:%M:%S").to_string(),
+            time: stamp.unwrap_or_else(|| chrono::Local::now().format("%H:%M:%S").to_string()),
             level: level.into(),
             text: protocol::strip_format(&text),
         };
-        // A /list response gives the full list, unlike the sampled status ping.
-        if let Some((_, list)) = text.split_once("players online:") {
-            let mut snapshots = self.snapshots.write().await;
-            let snapshot = snapshots.entry(id.into()).or_default();
-            let previous = snapshot.players.clone();
-            snapshot.players = list
-                .trim()
-                .split(", ")
-                .filter(|s| !s.is_empty())
-                .map(|name| Player {
-                    name: name.into(),
-                    uuid: previous
-                        .iter()
-                        .find(|p| p.name == name)
-                        .map(|p| p.uuid.clone())
-                        .unwrap_or_default(),
-                })
-                .collect();
-            snapshot.players_online = snapshot.players.len() as u32;
-            snapshot.player_list_complete = true;
-        }
         let mut logs = self.logs.write().await;
         let lines = logs.entry(id.into()).or_default();
         lines.push(entry);
-        if lines.len() > 1000 {
-            lines.drain(..lines.len() - 1000);
+        if lines.len() > 5000 {
+            lines.drain(..lines.len() - 5000);
+        }
+    }
+    async fn follow_logs(self: App) {
+        let mut tails = HashMap::<String, logtail::LogTail>::new();
+        loop {
+            let servers = self.config.lock().await.servers.clone();
+            tails.retain(|id, _| servers.iter().any(|s| s.id == *id && s.mode == "local"));
+            for server in servers.into_iter().filter(|s| s.mode == "local") {
+                let path = std::path::Path::new(&server.directory).join("logs/latest.log");
+                let tail = tails.entry(server.id.clone()).or_default();
+                match tail.read(&path).await {
+                    Ok(lines) => {
+                        self.snapshots
+                            .write()
+                            .await
+                            .entry(server.id.clone())
+                            .or_default()
+                            .log_source = "latest.log + console".into();
+                        for line in lines {
+                            self.ingest_log(&server.id, line, LogSource::File).await;
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+                    Err(error) => {
+                        let mut snapshots = self.snapshots.write().await;
+                        snapshots.entry(server.id.clone()).or_default().log_source =
+                            format!("console (latest.log unavailable: {error})");
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
     pub async fn proxy(
@@ -279,12 +383,15 @@ impl Manager {
         let stdin = child.stdin.take().ok_or("Cannot open process input")?;
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
+        let configured_heap = telemetry::configured_heap(server).await;
         processes.insert(
             server.id.clone(),
             Arc::new(Mutex::new(ManagedProcess {
                 child,
                 stdin,
                 started: Instant::now(),
+                heap_max: configured_heap,
+                heap_checked: false,
             })),
         );
         drop(processes);
@@ -293,7 +400,7 @@ impl Manager {
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                app.log(&id, line).await;
+                app.ingest_log(&id, line, LogSource::Console).await;
             }
         });
         let app = self.clone();
@@ -301,7 +408,7 @@ impl Manager {
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                app.log(&id, line).await;
+                app.ingest_log(&id, line, LogSource::Console).await;
             }
         });
         self.log(&server.id, "[void.dash] Starting server process…".into())
@@ -485,6 +592,7 @@ impl Manager {
         Ok(commands)
     }
     pub async fn background(self: App) {
+        tokio::spawn(self.clone().follow_logs());
         let mut system = System::new_all();
         let mut tick = 0u64;
         loop {
@@ -497,12 +605,14 @@ impl Manager {
                 cpu_count: system.cpus().len(),
                 disk_free: disks.iter().map(|d| d.available_space()).sum(),
                 disk_total: disks.iter().map(|d| d.total_space()).sum(),
+                host_uptime: System::uptime(),
                 ..Default::default()
             };
             let servers = self.config.lock().await.servers.clone();
             let mut tasks = tokio::task::JoinSet::new();
             for server in servers {
                 let mut resources = host.clone();
+                let mut jvm = None;
                 let process = self.processes.lock().await.get(&server.id).cloned();
                 if let Some(handle) = process {
                     let mut p = handle.lock().await;
@@ -517,19 +627,43 @@ impl Manager {
                         }
                         Ok(None) => {
                             resources.uptime = p.started.elapsed().as_secs();
+                            if let Some(pid) = p.child.id() {
+                                jvm = Some((pid, p.heap_max, p.heap_checked, handle.clone()));
+                            }
                             if let Some(process) = p
                                 .child
                                 .id()
                                 .and_then(|id| system.process(Pid::from_u32(id)))
                             {
                                 resources.process_memory = Some(process.memory());
-                                resources.process_cpu =
-                                    Some(process.cpu_usage() / resources.cpu_count.max(1) as f32);
+                                resources.process_cpu = Some(process.cpu_usage());
                             }
                         }
                         Err(e) => {
                             self.log(&server.id, format!("[void.dash] Process check failed: {e}"))
                                 .await
+                        }
+                    }
+                }
+                if let Some((pid, limit, checked, handle)) = jvm {
+                    let (heap_used, observed_max) =
+                        tokio::join!(telemetry::heap_used(&server.executable, pid), async {
+                            if checked {
+                                None
+                            } else {
+                                telemetry::heap_max(&server.executable, pid).await
+                            }
+                        });
+                    resources.heap_used = heap_used;
+                    resources.heap_max = observed_max.or(limit);
+                    resources.memory_limit = resources.heap_max;
+                    if !checked {
+                        let mut p = handle.lock().await;
+                        if p.child.id() == Some(pid) {
+                            // Retry attachment while a newly launched JVM is still initializing.
+                            p.heap_checked =
+                                resources.heap_used.is_some() || observed_max.is_some();
+                            p.heap_max = resources.heap_max;
                         }
                     }
                 }
@@ -543,7 +677,7 @@ impl Manager {
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
     }
-    async fn refresh(&self, server: Server, resources: Resources, tick: u64) {
+    async fn refresh(&self, server: Server, mut resources: Resources, tick: u64) {
         if server.mode == "agent" {
             match self
                 .proxy(&server, reqwest::Method::GET, "state", None)
@@ -567,21 +701,47 @@ impl Manager {
                     let snapshot = snapshots.entry(server.id).or_default();
                     snapshot.online = false;
                     snapshot.resources = None;
+                    snapshot.uptime_seconds = None;
                     snapshot.error = Some(error);
                 }
             }
             return;
         }
-        let result = protocol::status(&server.host, server.port).await;
+        let (result, bridge) = tokio::join!(
+            protocol::status(&server.host, server.port),
+            self.bridge_sample(&server)
+        );
         let managed = self.processes.lock().await.contains_key(&server.id);
         {
             let mut snapshots = self.snapshots.write().await;
             let snapshot = snapshots.entry(server.id.clone()).or_default();
             snapshot.managed = managed;
+            snapshot.uptime_seconds = managed.then_some(resources.uptime);
+            let bridge = match bridge {
+                Ok(sample) => {
+                    snapshot.telemetry_error = None;
+                    sample
+                }
+                Err(error) => {
+                    snapshot.telemetry_error = Some(error);
+                    None
+                }
+            };
+            if let Some(sample) = &bridge {
+                resources.heap_used = Some(sample.heap_used);
+                resources.heap_max = Some(sample.heap_max);
+                resources.memory_limit = Some(sample.heap_max);
+                snapshot.uptime_seconds = Some(sample.uptime_seconds);
+            }
             snapshot.resources = if server.mode == "local" {
                 Some(resources)
             } else {
-                None
+                bridge.as_ref().map(|sample| Resources {
+                    heap_used: Some(sample.heap_used),
+                    heap_max: Some(sample.heap_max),
+                    memory_limit: Some(sample.heap_max),
+                    ..Default::default()
+                })
             };
             snapshot.updated_at = Some(chrono::Utc::now().to_rfc3339());
             match result {
@@ -605,10 +765,24 @@ impl Manager {
                                 player.uuid = sample.uuid.clone();
                             }
                         }
-                    } else {
+                    } else if status.players.len() == status.online as usize
+                        || snapshot.players.len() > status.online as usize
+                    {
                         snapshot.player_list_complete =
                             status.players.len() == status.online as usize;
                         snapshot.players = status.players;
+                    } else {
+                        for player in status.players {
+                            if let Some(existing) =
+                                snapshot.players.iter_mut().find(|p| p.name == player.name)
+                            {
+                                existing.uuid = player.uuid;
+                            } else {
+                                snapshot.players.push(player);
+                            }
+                        }
+                        snapshot.player_list_complete =
+                            snapshot.players.len() == status.online as usize;
                     }
                 }
                 Err(error) => {
@@ -620,36 +794,113 @@ impl Manager {
                     snapshot.player_list_complete = false;
                 }
             }
-        }
-        if tick.is_multiple_of(5) {
-            if !server.rcon_password.is_empty() {
-                if let Ok(output) = protocol::rcon(
-                    &server.host,
-                    server.rcon_port,
-                    &server.rcon_password,
-                    "list",
-                )
-                .await
-                {
-                    self.log(&server.id, output).await;
-                }
-            } else if managed
-                && self
-                    .snapshots
-                    .read()
-                    .await
-                    .get(&server.id)
-                    .is_some_and(|s| s.online)
-            {
-                let _ = self.command(&server, "list").await;
+            if let Some(sample) = bridge {
+                snapshot.players = sample.players;
+                snapshot.players_online = snapshot.players.len() as u32;
+                snapshot.player_list_complete = true;
             }
         }
+        if tick.is_multiple_of(5) && !server.rcon_password.is_empty() {
+            if let Ok(output) = protocol::rcon(
+                &server.host,
+                server.rcon_port,
+                &server.rcon_password,
+                "list",
+            )
+            .await
+            {
+                self.update_player_list(&server.id, &output).await;
+            }
+        }
+    }
+    async fn bridge_sample(&self, server: &Server) -> Result<Option<telemetry::BridgeSample>> {
+        let (url, token) = if server.telemetry_url.is_empty() {
+            match telemetry::local_bridge(server).await {
+                Some(connection) => connection,
+                None => return Ok(None),
+            }
+        } else {
+            (server.telemetry_url.clone(), server.telemetry_token.clone())
+        };
+        let response = self
+            .http
+            .get(&url)
+            .bearer_auth(&token)
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await
+            .map_err(|_| {
+                "Cannot reach the telemetry bridge. Check its URL and token.".to_string()
+            })?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "Telemetry bridge returned HTTP {}. Check its token and URL.",
+                response.status().as_u16()
+            ));
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| "Cannot read the telemetry bridge response.")?;
+        if bytes.len() > 2_097_152 {
+            return Err("Telemetry bridge response is too large.".into());
+        }
+        let sample: telemetry::BridgeSample = serde_json::from_slice(&bytes)
+            .map_err(|_| "Telemetry bridge returned an incompatible response.")?;
+        sample.validate()?;
+        Ok(Some(sample))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn full_logs_deduplicate_sources_preserve_command_output_and_hide_empty_list_noise() {
+        let app = Manager::new(
+            std::env::temp_dir().join(format!("void-logs-{}.json", uuid::Uuid::new_v4())),
+            "test".into(),
+            false,
+        )
+        .await
+        .unwrap();
+        app.ingest_log(
+            "world",
+            "[12:00:01 INFO]: Alex joined the game".into(),
+            LogSource::Console,
+        )
+        .await;
+        app.ingest_log(
+            "world",
+            "[12:00:01] [Server thread/INFO]: Alex joined the game".into(),
+            LogSource::File,
+        )
+        .await;
+        app.ingest_log(
+            "world",
+            "[12:00:02 INFO]: Teleported Alex to 0, 66, 0".into(),
+            LogSource::File,
+        )
+        .await;
+        app.ingest_log(
+            "world",
+            "[12:00:03 INFO]: Alex left the game".into(),
+            LogSource::File,
+        )
+        .await;
+        app.ingest_log(
+            "world",
+            "[12:00:04 INFO]: There are 0 of a max of 20 players online:&#x20;".into(),
+            LogSource::File,
+        )
+        .await;
+        let logs = app.logs.read().await;
+        assert_eq!(logs["world"].len(), 3);
+        assert_eq!(logs["world"][0].time, "12:00:01");
+        assert!(logs["world"][1].text.contains("Teleported Alex"));
+        assert!(logs["world"][2].text.contains("left the game"));
+        assert!(app.snapshots.read().await["world"].players.is_empty());
+    }
     #[tokio::test]
     async fn restart_of_external_local_server_never_connects_to_rcon() {
         let app = Manager::new(

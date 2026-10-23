@@ -1,19 +1,30 @@
-Fixes misleading RCON errors when restarting local Minecraft servers started from a separate batch file or terminal.
+## Dashboard cleanup and real server telemetry
 
-- Local Restart now operates only on the process owned by the current void.dash session. It never silently falls back to RCON.
-- An externally started server is labeled in the dashboard, with steps for taking control. Restart is disabled until the server is launched here.
-- Stop is disabled for an externally started local server unless RCON is configured.
-- RCON connection failures identify the RCON host and port and explain which settings to check.
-- A locally managed server can restart without RCON, even if an old optional RCON password remains configured.
+- Removed the top logo, introduction text, sidebar, and bottom-left slogan. The header now contains server tabs and Add Server.
+- Added an active-server uptime timer directly below its player count.
+- Server resources show actual JVM heap usage against the server's JVM maximum. JDK tools or the optional bridge supply measurements; host RAM and process RSS are never substituted for heap usage.
+- Added a separate host panel for system CPU, RAM, disk space, and OS uptime. The server panel keeps its own process CPU and resident memory.
+- Added real per-player ping through the optional read-only Paper/Purpur/Spigot bridge. Missing measurements are marked unavailable.
+- Removed periodic console list commands and empty-player-list chatter.
+- Full console logging now follows logs/latest.log as well as stdout/stderr, including connection/logout and command output, with rotation handling and matching-output deduplication. The dashboard retains the latest 5,000 lines; Minecraft's files retain full history.
+- Added a player-relative teleport helper. Commands reach Minecraft unchanged unless the user explicitly chooses the helper.
 
-### Download and run on Windows
+## Download and upgrade
 
-Download **void-dash-0.1.1-windows-x86_64.zip**, extract it, and double-click **void-dash.exe**. Your default browser opens the dashboard. Leave the console window open while using it. Rust and Node.js are not required. Stop any worlds managed by void.dash and close the old application before replacing its executable. Existing saved configuration is retained.
+Download **void-dash-0.2.0-windows-x86_64.zip**, extract it, and launch **void-dash.exe**. Stop servers managed by the old dashboard and close it before replacing the executable. Saved configurations are retained. Update remote void.dash agents to this version too.
 
-If Minecraft was started from a `.bat` file, type `stop` in that Minecraft console and wait for saving/shutdown. In void.dash choose **Local process**, use `127.0.0.1` and the directory containing the server jar and `server.properties`, and copy the Java executable/arguments from your working batch file. Use **Start** here; Restart and console controls then work without RCON. An already-open Minecraft console cannot be attached to the dashboard.
+For real player ping and exact JVM telemetry, download **void-dash-bridge.jar**, place it in the Minecraft server's **plugins** directory, and restart Minecraft. It supports Bukkit-compatible Paper/Purpur/Spigot 1.21 servers on Java 21. A local profile detects its default loopback configuration from the configured server directory. Remote/custom connections can use the Telemetry URL/token fields: the default endpoint is http://127.0.0.1:8788/v1/telemetry and the generated token is in plugins/void-dash-bridge/config.yml. No RCON is required.
 
-The standalone **void-dash.exe** is also attached if you only want the executable. `SHA256SUMS.txt` contains checksums for both downloads.
+## Relative teleport coordinates
 
-The Windows x64 executable was cross-compiled on Linux. Its format and imported DLLs were checked, but it has not been run on Windows. Ten Rust tests and desktop/mobile browser smoke tests pass, including a real externally launched process, the ownership error, taking control without RCON, and graceful managed restart.
+The server console's relative coordinates use the console/world-spawn position. To move each selected player two blocks up from their own current position:
 
-Actual Minecraft servers need to be configured separately. Remote hosts need a void.dash agent for full logs, host telemetry, and startup/restart controls; RCON alone provides commands and stopping. See the repository README for setup.
+```mcfunction
+execute as @a at @s run tp @s ~ ~2 ~
+```
+
+The command field offers **Use player positions** for this form; it does not silently change normal Minecraft commands.
+
+## Validation
+
+Sixteen Rust tests, desktop/mobile browser checks, two bridge HTTP/authentication tests, and a real JVM integration check pass. The JVM check verifies the Rust API reports heap usage within an actual 96 MiB JVM maximum independently of host memory. GitHub Actions compiles the bridge against the Spigot API. A live Minecraft server has not been exercised here. The Windows executable was cross-compiled and its imports/archive checked; it has not been run on Windows.
